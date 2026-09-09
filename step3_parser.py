@@ -1,35 +1,98 @@
 import re
 
+def _reconstruct_reading_order(raw_lines, row_tolerance=15):
+    items = []
+    for item in raw_lines:
+        bbox = item.get("bbox", [])
+        if len(bbox) == 4:
+            y_center = sum(pt[1] for pt in bbox) / 4
+            x_center = sum(pt[0] for pt in bbox) / 4
+            items.append((y_center, x_center, item["text"]))
+        else:
+            items.append((0, 0, item["text"]))
+    items.sort(key=lambda t: t[0])
+    rows, current_row, last_y = [], [], None
+    for y, x, text in items:
+        if last_y is not None and abs(y - last_y) > row_tolerance:
+            rows.append(current_row); current_row = []
+        current_row.append((x, text)); last_y = y
+    if current_row: rows.append(current_row)
+    return " ".join(" ".join(t for _, t in sorted(row, key=lambda r: r[0])) for row in rows)
+
+
+# Delimiters restricted to "/" and "-" only (NOT ".") — a period is heavily
+# overloaded with decimal prices/weights (e.g. "0.20") on real labels, and
+# including it caused false-positive date matches during testing.
+DATE_VALUE = r"\d{1,2}[-/]\s?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-/]\s?\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}[/-]\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{2,4}"
+
+
 def parse_legal_metrology_declarations(raw_lines):
-    full_text = " ".join([item["text"] for item in raw_lines])
-    
-    # Regex patterns for mandatory declarations
-    mrp_pattern = r"(?:MRP|M\.R\.P\.|Rs\.?|₹)\s*[:\.-]?\s*(\d+(?:\.\d{1,2})?)"
-    net_wt_pattern = r"(?:Net\s*Wt|Net\s*Qty|Quantity|Net\s*Weight|NET\s*WT)\s*[:\.-]?\s*(\d+(?:\.\d+)?\s*(?:g|grm|gram|grams|kg|ml|l|liter|litres|N|units))"
-    date_pattern = r"(?:Mfg|Packed|Pkg|Date|MFD|PKD)\s*[:\.-]?\s*(\d{2}[/\.-]\d{2}[/\.-]\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{2,4})"
-    fssai_pattern = r"(?:Lic\s*No\.?|Licence\s*No\.?|FSSAI)\s*[:\.-]?\s*(\d{14})"
-    contact_pattern = r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\d{10}|1800\s*\d{3}\s*\d{3,4})"
+    full_text = _reconstruct_reading_order(raw_lines)
+
+    mrp_pattern = r"(?:MRP|M\.R\.P\.|Max(?:imum)?\s*Retail\s*Price)[^\d]{0,35}?(\d+(?:\.\d{1,2})?)"
+    net_wt_pattern = r"(?:Net\s*Wt|Net\s*Qty|Net\s*Quantity|Net\s*Weight|Net\s*Volume|Net\s*Content|NET\s*WT\.?|Contents)[^\d]{0,15}?(\d+(?:\.\d+)?)\s*(g|grm|gram|grams|kg|ml|l|liter|litres|N|U|units|sticks?|pcs|pieces?|tablets?|capsules?)"
+    address_pattern = r"(?:Manufactured\s*by|Mfd\s*by|Mfg\s*by|Packed\s*by|Pkd\s*by|Imported\s*by|Imp\s*by|Marketed\s*by|Mkt\s*by|Mktd\s*by|Address)\s*[:\.-]?\s*[A-Za-z0-9,.\-\s]{10,}|\b\d{6}\b"
+    consumer_care_pattern = r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\d{10}|1800\s*\d{3}\s*\d{3,4})"
 
     mrp_match = re.search(mrp_pattern, full_text, re.IGNORECASE)
     net_wt_match = re.search(net_wt_pattern, full_text, re.IGNORECASE)
-    date_match = re.search(date_pattern, full_text, re.IGNORECASE)
-    fssai_match = re.search(fssai_pattern, full_text, re.IGNORECASE)
-    contact_match = re.search(contact_pattern, full_text, re.IGNORECASE)
+    address_match = re.search(address_pattern, full_text, re.IGNORECASE)
+    care_match = re.search(consumer_care_pattern, full_text, re.IGNORECASE)
+
+    mfg_keyword_pattern = rf"(?:Date\s*of\s*Manufactur(?:e|ing)|Date\s*of\s*Import|Imp\.?\s*Date|Mfg\.?\s*Date|Mfg|Packed|Pkg|MFD|PKD)[^\d]{{0,20}}?({DATE_VALUE})"
+    date_match = re.search(mfg_keyword_pattern, full_text, re.IGNORECASE)
+
+    date_value = None
+    if date_match:
+        date_value = date_match.group(1)
+    else:
+        all_dates = [m.group(0) for m in re.finditer(DATE_VALUE, full_text, re.IGNORECASE)]
+        if all_dates:
+            date_value = f"{all_dates[0]} (auto-detected — verify placement)"
+
+    required_mm = None
+    if net_wt_match:
+        try:
+            qty_val = float(net_wt_match.group(1))
+            unit = net_wt_match.group(2).lower()
+            grams_equiv = qty_val * 1000 if unit in ("kg", "l", "liter", "litres") else qty_val
+            required_mm = 1 if grams_equiv <= 200 else 2 if grams_equiv <= 500 else 4
+        except (ValueError, IndexError):
+            required_mm = None
+
+    heights = []
+    for item in raw_lines:
+        bbox = item.get("bbox", [])
+        if len(bbox) == 4:
+            ys = [pt[1] for pt in bbox]
+            heights.append(max(ys) - min(ys))
+    median_height_px = sorted(heights)[len(heights) // 2] if heights else 0
+    font_ok = median_height_px >= 14
 
     declarations = {
         "mrp": mrp_match.group(0) if mrp_match else None,
         "net_quantity": net_wt_match.group(0) if net_wt_match else None,
-        "date_of_mfg": date_match.group(0) if date_match else None,
-        "fssai_license": fssai_match.group(0) if fssai_match else None,
-        "consumer_care": contact_match.group(0) if contact_match else None,
+        "date_of_mfg": date_value,
+        "manufacturer_address": address_match.group(0) if address_match else None,
+        "consumer_care": care_match.group(0) if care_match else None,
     }
 
-    missing_fields = [k for k, v in declarations.items() if v is None]
-    is_compliant = len(missing_fields) == 0
+    issues = []
+    if not declarations["mrp"]:
+        issues.append("Rule 6(1)(e): Retail sale price (MRP) not detected")
+    if not declarations["net_quantity"]:
+        issues.append("Rule 6(1)(c): Net quantity not detected")
+    if not date_value:
+        issues.append("Rule 6(1)(d): Month/year of manufacture not detected")
+    if not declarations["manufacturer_address"]:
+        issues.append("Rule 6(1)(a): Manufacturer/packer address not clearly detected")
+    if not declarations["consumer_care"]:
+        issues.append("Rule 6(2): Consumer care contact details not detected")
+    if not font_ok:
+        mm_note = f" (Rule 7 requires min. {required_mm}mm for this quantity)" if required_mm else ""
+        issues.append(f"Rule 7: Text may be smaller than the required numeral height{mm_note}")
 
     return {
-        "is_compliant": is_compliant,
-        "declarations": declarations,
-        "missing_fields": missing_fields,
-        "raw_text": full_text
+        "declarations": declarations, "font_ok": font_ok, "required_mm": required_mm,
+        "median_text_height_px": median_height_px, "issues": issues, "raw_text": full_text,
     }
