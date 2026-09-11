@@ -1,11 +1,11 @@
-"""Phase 2 Postgres-backed scan worker."""
+"""Phase 2 scan worker."""
 
 import os
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from db import SessionLocal
 from models import Scan, ScanImage
@@ -16,65 +16,67 @@ from storage import download_image
 
 
 PROCESSING_TIMEOUT = timedelta(minutes=15)
-POLL_INTERVAL_SECONDS = 1
+POLL_INTERVAL_SECONDS = 2
+
+
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def recover_stale_processing() -> None:
-    cutoff = datetime.now(timezone.utc) - PROCESSING_TIMEOUT
+    """Return processing images older than the timeout to pending."""
+    cutoff = now_utc() - PROCESSING_TIMEOUT
 
     session = SessionLocal()
 
     try:
-        session.execute(
-            update(ScanImage)
-            .where(
+        stale_images = session.execute(
+            select(ScanImage).where(
                 ScanImage.status == "processing",
                 ScanImage.started_at.is_not(None),
                 ScanImage.started_at < cutoff,
             )
-            .values(
-                status="pending",
-                started_at=None,
-            )
-        )
+        ).scalars().all()
+
+        for image in stale_images:
+            image.status = "pending"
+            image.started_at = None
 
         session.commit()
-
     finally:
         session.close()
 
 
 def claim_image():
+    """Atomically claim one pending image."""
     session = SessionLocal()
 
     try:
-        statement = (
+        image = session.execute(
             select(ScanImage)
             .where(ScanImage.status == "pending")
             .order_by(ScanImage.created_at)
-            .with_for_update(skip_locked=True)
             .limit(1)
-        )
-
-        image = session.execute(statement).scalar_one_or_none()
+            .with_for_update(skip_locked=True)
+        ).scalar_one_or_none()
 
         if image is None:
             session.rollback()
             return None
 
         image.status = "processing"
-        image.started_at = datetime.now(timezone.utc)
+        image.started_at = now_utc()
 
         session.commit()
 
         return image.id
-
     finally:
         session.close()
 
 
-def _merge_first_detected(images):
-    keys = (
+def merge_declarations(images: list[ScanImage]) -> dict:
+    """Take the first detected value for each declaration field."""
+    fields = (
         "mrp",
         "net_quantity",
         "date_of_mfg",
@@ -82,46 +84,49 @@ def _merge_first_detected(images):
         "consumer_care",
     )
 
-    merged = {}
+    merged = {field: None for field in fields}
 
-    for key in keys:
-        merged[key] = None
-
+    for field in fields:
         for image in images:
             declarations = image.declarations or {}
-            value = declarations.get(key)
+            value = declarations.get(field)
 
-            if value:
-                merged[key] = value
+            if value is not None:
+                merged[field] = value
                 break
 
     return merged
 
 
-def _build_parent_issues(declarations, font_ok, required_mm):
+def build_missing_issues(
+    declarations: dict,
+    font_ok: bool | None,
+    required_mm: float | None,
+) -> list[str]:
+    """Compute parent-level compliance issues after declaration merge."""
     issues = []
 
-    if not declarations["mrp"]:
+    if declarations["mrp"] is None:
         issues.append(
             "Rule 6(1)(e): Retail sale price (MRP) not detected"
         )
 
-    if not declarations["net_quantity"]:
+    if declarations["net_quantity"] is None:
         issues.append(
             "Rule 6(1)(c): Net quantity not detected"
         )
 
-    if not declarations["date_of_mfg"]:
+    if declarations["date_of_mfg"] is None:
         issues.append(
             "Rule 6(1)(d): Month/year of manufacture not detected"
         )
 
-    if not declarations["manufacturer_address"]:
+    if declarations["manufacturer_address"] is None:
         issues.append(
             "Rule 6(1)(a): Manufacturer/packer address not clearly detected"
         )
 
-    if not declarations["consumer_care"]:
+    if declarations["consumer_care"] is None:
         issues.append(
             "Rule 6(2): Consumer care contact details not detected"
         )
@@ -132,7 +137,6 @@ def _build_parent_issues(declarations, font_ok, required_mm):
             if required_mm
             else ""
         )
-
         issues.append(
             "Rule 7: Text may be smaller than the required numeral height"
             + mm_note
@@ -141,45 +145,32 @@ def _build_parent_issues(declarations, font_ok, required_mm):
     return issues
 
 
-def _finalize_scan(session, scan_id) -> None:
-    scan = session.get(Scan, scan_id)
-
-    if scan is None:
-        return
-
-    images = session.execute(
-        select(ScanImage)
-        .where(ScanImage.scan_id == scan_id)
-        .order_by(ScanImage.created_at)
-    ).scalars().all()
-
-    if not images:
-        return
-
-    terminal_statuses = {"done", "failed"}
-
-    if any(image.status not in terminal_statuses for image in images):
-        return
-
+def finalize_scan(
+    session,
+    scan: Scan,
+    images: list[ScanImage],
+) -> None:
+    """Finalize the parent scan once all sibling images are terminal."""
     if any(image.status == "failed" for image in images):
         scan.status = "failed"
         return
 
-    declarations = _merge_first_detected(images)
+    if any(image.status != "done" for image in images):
+        return
 
-    raw_text_parts = [
-        image.raw_text
-        for image in images
-        if image.raw_text
-    ]
-
-    scan.raw_text = "\n\n".join(raw_text_parts)
+    declarations = merge_declarations(images)
 
     scan.mrp = declarations["mrp"]
     scan.net_quantity = declarations["net_quantity"]
     scan.date_of_mfg = declarations["date_of_mfg"]
     scan.manufacturer_address = declarations["manufacturer_address"]
     scan.consumer_care = declarations["consumer_care"]
+
+    scan.raw_text = "\n\n".join(
+        image.raw_text
+        for image in images
+        if image.raw_text
+    )
 
     font_values = [
         image.font_ok
@@ -218,7 +209,7 @@ def _finalize_scan(session, scan_id) -> None:
         else None
     )
 
-    issues = _build_parent_issues(
+    issues = build_missing_issues(
         declarations,
         scan.font_ok,
         scan.required_mm,
@@ -226,19 +217,21 @@ def _finalize_scan(session, scan_id) -> None:
 
     scan.issues = issues
 
-    has_mrp = declarations["mrp"] is not None
-    has_qty = declarations["net_quantity"] is not None
-
-    if not issues:
-        scan.status = "COMPLIANT"
-    elif not has_mrp or not has_qty:
+    if (
+        declarations["mrp"] is None
+        or declarations["net_quantity"] is None
+    ):
         scan.status = "VIOLATION"
-    else:
+    elif issues:
         scan.status = "WARNING"
+    else:
+        scan.status = "COMPLIANT"
 
 
 def process_image(image_id) -> None:
+    """Process one claimed image and persist its result or failure."""
     session = SessionLocal()
+    temp_path = None
 
     try:
         image = session.get(ScanImage, image_id)
@@ -246,59 +239,55 @@ def process_image(image_id) -> None:
         if image is None:
             return
 
-        object_key = image.object_key
+        image_bytes = download_image(image.object_key)
 
-        contents = download_image(object_key)
+        extension = os.path.splitext(image.object_key)[1] or ".jpg"
 
-        extension = os.path.splitext(object_key)[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=extension,
+        ) as temp_file:
+            temp_file.write(image_bytes)
+            temp_path = temp_file.name
 
-        tmp_path = None
+        _, enhanced, _ = preprocess_image(temp_path)
 
-        try:
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=extension,
-            ) as tmp:
-                tmp.write(contents)
-                tmp_path = tmp.name
+        if enhanced is None:
+            raise RuntimeError("Could not read the uploaded image")
 
-            resized, enhanced, _blur_score = preprocess_image(tmp_path)
+        raw_lines = extract_text_from_image(enhanced)
 
-            if enhanced is None:
-                raise RuntimeError(
-                    "Could not read the uploaded image"
-                )
+        parsed = parse_legal_metrology_declarations(raw_lines)
 
-            raw_lines = extract_text_from_image(enhanced)
+        image.raw_text = parsed["raw_text"]
+        image.declarations = parsed["declarations"]
+        image.font_ok = parsed["font_ok"]
+        image.required_mm = parsed["required_mm"]
+        image.placement_ok = None
+        image.processed_at = now_utc()
+        image.error_message = None
+        image.status = "done"
 
-            parsed = parse_legal_metrology_declarations(raw_lines)
+        scan = session.get(Scan, image.scan_id)
 
-            image.raw_text = parsed["raw_text"]
-            image.declarations = parsed["declarations"]
-            image.font_ok = parsed["font_ok"]
-            image.required_mm = parsed["required_mm"]
-            image.placement_ok = None
-            image.status = "done"
-            image.processed_at = datetime.now(timezone.utc)
-            image.error_message = None
+        sibling_images = session.execute(
+            select(ScanImage)
+            .where(ScanImage.scan_id == image.scan_id)
+            .order_by(ScanImage.created_at)
+        ).scalars().all()
 
-            session.flush()
+        if scan is not None:
+            finalize_scan(session, scan, sibling_images)
 
-            _finalize_scan(session, image.scan_id)
-
-            session.commit()
-
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.remove(tmp_path)
+        session.commit()
 
     except Exception as error:
         session.rollback()
 
-        failed_session = SessionLocal()
+        failure_session = SessionLocal()
 
         try:
-            image = failed_session.get(ScanImage, image_id)
+            image = failure_session.get(ScanImage, image_id)
 
             if image is None:
                 return
@@ -308,25 +297,28 @@ def process_image(image_id) -> None:
 
             if image.attempts >= 3:
                 image.status = "failed"
-                image.processed_at = datetime.now(timezone.utc)
+                image.processed_at = now_utc()
+
+                scan = failure_session.get(Scan, image.scan_id)
+
+                if scan is not None:
+                    scan.status = "failed"
             else:
                 image.status = "pending"
                 image.started_at = None
 
-            failed_session.flush()
-
-            _finalize_scan(failed_session, image.scan_id)
-
-            failed_session.commit()
-
+            failure_session.commit()
         finally:
-            failed_session.close()
+            failure_session.close()
 
     finally:
         session.close()
 
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
-def main():
+
+def main() -> None:
     recover_stale_processing()
 
     while True:
@@ -341,3 +333,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
