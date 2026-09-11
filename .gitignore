@@ -5,3 +5,4 @@ __pycache__/
 images/
 outputs/
 temp_upload.jpg
+.venv/
