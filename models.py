@@ -57,20 +57,62 @@ class Scan(Base):
 class ScanImage(Base):
     __tablename__ = "scan_images"
     __table_args__ = (
-        CheckConstraint("label IN ('front', 'back', 'side', 'other')", name="scan_image_label"),
-        CheckConstraint("status IN ('pending', 'processing', 'failed', 'done')", name="scan_image_status"),
+        CheckConstraint(
+            "label IN ('front', 'back', 'side', 'other')",
+            name="scan_image_label",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'failed', 'done')",
+            name="scan_image_status",
+        ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    scan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True)
-    object_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
-    label: Mapped[str] = mapped_column(String(16), nullable=False, default="other")
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    scan_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("scans.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    object_key: Mapped[str] = mapped_column(
+        String(512),
+        nullable=False,
+        unique=True,
+    )
+    label: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="other",
+    )
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="pending",
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
     raw_text: Mapped[str | None] = mapped_column(Text)
+    declarations: Mapped[dict | None] = mapped_column(JSONB)
     font_ok: Mapped[bool | None]
     required_mm: Mapped[float | None]
     placement_ok: Mapped[bool | None]
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
 
     scan: Mapped[Scan] = relationship(back_populates="images")
