@@ -12,10 +12,11 @@ from auth import (
     UserRead,
     UserUpdate,
     auth_backend,
+    current_active_officer,
     fastapi_users,
 )
 from db import SessionLocal
-from models import Scan, ScanImage
+from models import Scan, ScanImage, User
 from settings import settings
 from storage import ensure_bucket, image_object_key, upload_image
 
@@ -74,6 +75,7 @@ async def create_scan(
     files: List[UploadFile] = File(...),
     labels: Optional[List[str]] = Form(None),
     product_name: Optional[str] = Form(None),
+    user: User = Depends(current_active_officer),
 ):
     if len(files) > 4:
         raise HTTPException(
@@ -103,6 +105,7 @@ async def create_scan(
             input_type="image",
             status="pending",
             product_name=product_name,
+            scanned_by_id=user.id,
         )
 
         session.add(scan)
@@ -165,7 +168,10 @@ async def create_scan(
 
 
 @app.get("/api/scans/{scan_id}")
-def get_scan(scan_id: uuid.UUID):
+def get_scan(
+    scan_id: uuid.UUID,
+    user: User = Depends(current_active_officer),
+):
     session = SessionLocal()
 
     try:
