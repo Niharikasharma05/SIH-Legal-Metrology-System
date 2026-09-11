@@ -5,9 +5,7 @@ from typing import List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import func, select
 
 from db import SessionLocal
 from models import Scan, ScanImage
@@ -15,22 +13,13 @@ from settings import settings
 from storage import ensure_bucket, image_object_key, upload_image
 
 
-async def _read_upload(file: UploadFile) -> bytes:
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(status_code=400, detail="Empty image upload")
-    return contents
-
-
-def _extension(filename: str | None) -> str:
-    if not filename:
-        return "jpg"
-    extension = os.path.splitext(filename)[1].lower().lstrip(".")
-    return extension or "jpg"
+ALLOWED_LABELS = {"front", "back", "side", "other"}
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Local development is self-contained; non-local bucket provisioning is
+    # intentionally an explicit deployment responsibility.
     if settings.is_local:
         ensure_bucket()
     yield
@@ -50,11 +39,9 @@ app.add_middleware(
 )
 
 
-ALLOWED_LABELS = {"front", "back", "side", "other"}
-
-
 @app.get("/health")
 async def health():
+    # Keep health behavior unchanged.
     return {
         "status": "ok",
         "environment": settings.app_env,
@@ -67,40 +54,25 @@ async def create_scan(
     labels: Optional[List[str]] = Form(None),
     product_name: Optional[str] = Form(None),
 ):
-    if not 1 <= len(files) <= 4:
+    if len(files) > 4:
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail="A scan must contain between 1 and 4 images",
+        )
+
+    if labels is not None and len(labels) != len(files):
+        raise HTTPException(
+            status_code=422,
+            detail="The number of labels must match the number of files",
         )
 
     if labels is None:
         labels = ["other"] * len(files)
-    elif len(labels) != len(files):
-        raise HTTPException(
-            status_code=400,
-            detail="The number of labels must match the number of images",
-        )
 
-    invalid_labels = [
-        label for label in labels
-        if label not in ALLOWED_LABELS
-    ]
-
-    if invalid_labels:
+    if any(label not in ALLOWED_LABELS for label in labels):
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail="Invalid image label",
-        )
-
-    image_payloads = []
-
-    for file in files:
-        image_payloads.append(
-            (
-                file,
-                await _read_upload(file),
-                _extension(file.filename),
-            )
         )
 
     session = SessionLocal()
@@ -115,13 +87,21 @@ async def create_scan(
         session.add(scan)
         session.flush()
 
-        image_count = 0
+        for file, label in zip(files, labels):
+            contents = await file.read()
 
-        for (file, contents, extension), label in zip(
-            image_payloads,
-            labels,
-        ):
+            if not contents:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Uploaded image is empty",
+                )
+
             image_id = uuid.uuid4()
+            extension = (
+                os.path.splitext(file.filename)[1]
+                if file.filename
+                else ".jpg"
+            )
 
             object_key = image_object_key(
                 scan.id,
@@ -139,25 +119,23 @@ async def create_scan(
                 id=image_id,
                 scan_id=scan.id,
                 object_key=object_key,
-                label=label,
                 status="pending",
-                attempts=0,
+                label=label,
             )
 
             session.add(image)
-            image_count += 1
 
         session.commit()
 
-        return JSONResponse(
-            status_code=202,
-            content={
-                "id": str(scan.id),
-                "status": scan.status,
-                "image_count": image_count,
-            },
-        )
+        return {
+            "id": str(scan.id),
+            "status": "pending",
+            "image_count": len(files),
+        }
 
+    except HTTPException:
+        session.rollback()
+        raise
     except Exception:
         session.rollback()
         raise
@@ -166,31 +144,26 @@ async def create_scan(
 
 
 @app.get("/api/scans/{scan_id}")
-def get_scan(scan_id: str):
+def get_scan(scan_id: uuid.UUID):
     session = SessionLocal()
 
     try:
-        try:
-            scan_uuid = uuid.UUID(scan_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid scan id",
-            )
-
-        statement = (
+        scan = session.execute(
             select(Scan)
-            .where(Scan.id == scan_uuid)
-            .options(selectinload(Scan.images))
-        )
-
-        scan = session.execute(statement).scalar_one_or_none()
+            .where(Scan.id == scan_id)
+        ).scalar_one_or_none()
 
         if scan is None:
             raise HTTPException(
                 status_code=404,
                 detail="Scan not found",
             )
+
+        images = session.execute(
+            select(ScanImage)
+            .where(ScanImage.scan_id == scan.id)
+            .order_by(ScanImage.created_at)
+        ).scalars().all()
 
         return {
             "id": str(scan.id),
@@ -215,26 +188,14 @@ def get_scan(scan_id: str):
                     "id": str(image.id),
                     "label": image.label,
                     "status": image.status,
-                    "attempts": image.attempts,
                     "raw_text": image.raw_text,
                     "declarations": image.declarations,
                     "font_ok": image.font_ok,
                     "required_mm": image.required_mm,
                     "placement_ok": image.placement_ok,
-                    "started_at": (
-                        image.started_at.isoformat()
-                        if image.started_at
-                        else None
-                    ),
-                    "processed_at": (
-                        image.processed_at.isoformat()
-                        if image.processed_at
-                        else None
-                    ),
                     "error_message": image.error_message,
-                    "created_at": image.created_at.isoformat(),
                 }
-                for image in scan.images
+                for image in images
             ],
         }
 
@@ -250,31 +211,42 @@ def get_scan_history(
 ):
     if page < 1:
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail="page must be at least 1",
         )
 
     if page_size < 1 or page_size > 100:
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail="page_size must be between 1 and 100",
         )
 
     session = SessionLocal()
 
     try:
-        statement = select(Scan).order_by(Scan.created_at.desc())
+        count_statement = select(func.count()).select_from(Scan)
+
+        if status is not None:
+            count_statement = count_statement.where(
+                Scan.status == status
+            )
+
+        total = session.execute(count_statement).scalar_one()
+
+        statement = (
+            select(Scan)
+            .order_by(Scan.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
 
         if status is not None:
             statement = statement.where(Scan.status == status)
 
-        offset = (page - 1) * page_size
-
-        scans = session.execute(
-            statement.offset(offset).limit(page_size)
-        ).scalars().all()
+        scans = session.execute(statement).scalars().all()
 
         return {
+            "total": total,
             "page": page,
             "page_size": page_size,
             "items": [
@@ -283,6 +255,7 @@ def get_scan_history(
                     "status": scan.status,
                     "input_type": scan.input_type,
                     "product_name": scan.product_name,
+                    "category": scan.category,
                     "created_at": scan.created_at.isoformat(),
                     "updated_at": scan.updated_at.isoformat(),
                 }
