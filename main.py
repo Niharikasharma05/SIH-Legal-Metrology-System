@@ -1,27 +1,45 @@
-import tempfile, os, itertools, datetime
+import os
+import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from typing import List, Optional
 
-from step1_preprocess import preprocess_image
-from step2_ocr import extract_text_from_image
-from step3_parser import parse_legal_metrology_declarations
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from db import SessionLocal
+from models import Scan, ScanImage
 from settings import settings
-from storage import ensure_bucket
+from storage import ensure_bucket, image_object_key, upload_image
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty image upload")
+    return contents
+
+
+def _extension(filename: str | None) -> str:
+    if not filename:
+        return "jpg"
+    extension = os.path.splitext(filename)[1].lower().lstrip(".")
+    return extension or "jpg"
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Local development is self-contained; non-local bucket provisioning is
-    # intentionally an explicit deployment responsibility.
     if settings.is_local:
         ensure_bucket()
     yield
 
 
-app = FastAPI(title="SetuCheck Legal Metrology Engine", lifespan=lifespan)
+app = FastAPI(
+    title="SetuCheck Legal Metrology Engine",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,118 +49,256 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_scan_id_counter = itertools.count(1001)
 
-
-class ProductScan(BaseModel):
-    id: int
-    scannedAt: str
-    productName: str
-    mrp: str
-    netQuantity: str
-    manufactureDate: str
-    manufacturerAddress: str
-    consumerCare: str
-    fontCheck: str
-    status: str
-    issues: List[str]
-    rawText: str
+ALLOWED_LABELS = {"front", "back", "side", "other"}
 
 
 @app.get("/health")
 async def health():
-    # This deliberately does not probe infrastructure. It proves the app has
-    # loaded its typed runtime configuration; DB/storage checks belong to the
-    # infra smoke test until the async pipeline is introduced in Phase 2.
-    return {"status": "ok", "environment": settings.app_env}
-
-
-def build_scan_result(declarations, font_ok, required_mm, issues, product_name, raw_text) -> ProductScan:
-    has_mrp = declarations["mrp"] is not None
-    has_qty = declarations["net_quantity"] is not None
-
-    if not issues:
-        status = "COMPLIANT"
-    elif not has_mrp or not has_qty:
-        status = "VIOLATION"
-    else:
-        status = "WARNING"
-
-    font_text = "Readable"
-    if not font_ok:
-        font_text = f"Below Rule 7 minimum ({required_mm}mm)" if required_mm else "Too small — needs review"
-
-    return ProductScan(
-        id=next(_scan_id_counter),
-        scannedAt=datetime.datetime.now().isoformat(),
-        productName=product_name or "Untitled scan",
-        mrp=declarations["mrp"] or "Not detected",
-        netQuantity=declarations["net_quantity"] or "Not detected",
-        manufactureDate=declarations["date_of_mfg"] or "Not detected",
-        manufacturerAddress="Present" if declarations["manufacturer_address"] else "Missing",
-        consumerCare="Present" if declarations["consumer_care"] else "Missing",
-        fontCheck=font_text,
-        status=status,
-        issues=issues,
-        rawText=raw_text,
-    )
-
-
-@app.post("/api/compliance/scans", response_model=ProductScan)
-async def scan_compliance(
-    file: Optional[UploadFile] = File(None),
-    productName: Optional[str] = Form(None),
-):
-    empty_declarations = {
-        "mrp": None, "net_quantity": None, "date_of_mfg": None,
-        "manufacturer_address": None, "consumer_care": None,
+    return {
+        "status": "ok",
+        "environment": settings.app_env,
     }
 
-    if not file or not file.filename:
-        return build_scan_result(
-            empty_declarations, False, None,
-            ["No image received by the server"], productName, "",
+
+@app.post("/api/scans", status_code=202)
+async def create_scan(
+    files: List[UploadFile] = File(...),
+    labels: Optional[List[str]] = Form(None),
+    product_name: Optional[str] = Form(None),
+):
+    if not 1 <= len(files) <= 4:
+        raise HTTPException(
+            status_code=400,
+            detail="A scan must contain between 1 and 4 images",
         )
 
-    contents = await file.read()
-    ext = os.path.splitext(file.filename)[1] or ".jpg"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-        tmp.write(contents)
-        tmp_path = tmp.name
+    if labels is None:
+        labels = ["other"] * len(files)
+    elif len(labels) != len(files):
+        raise HTTPException(
+            status_code=400,
+            detail="The number of labels must match the number of images",
+        )
+
+    invalid_labels = [
+        label for label in labels
+        if label not in ALLOWED_LABELS
+    ]
+
+    if invalid_labels:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid image label",
+        )
+
+    image_payloads = []
+
+    for file in files:
+        image_payloads.append(
+            (
+                file,
+                await _read_upload(file),
+                _extension(file.filename),
+            )
+        )
+
+    session = SessionLocal()
 
     try:
-        resized, enhanced, blur_score = preprocess_image(tmp_path)
-        if enhanced is None:
-            return build_scan_result(
-                empty_declarations, False, None,
-                ["Could not read the uploaded image"], productName, "",
+        scan = Scan(
+            input_type="image",
+            status="pending",
+            product_name=product_name,
+        )
+
+        session.add(scan)
+        session.flush()
+
+        image_count = 0
+
+        for (file, contents, extension), label in zip(
+            image_payloads,
+            labels,
+        ):
+            image_id = uuid.uuid4()
+
+            object_key = image_object_key(
+                scan.id,
+                image_id,
+                extension,
             )
 
-        raw_lines = extract_text_from_image(enhanced)
-        parsed = parse_legal_metrology_declarations(raw_lines)
+            upload_image(
+                object_key,
+                contents,
+                file.content_type or "image/jpeg",
+            )
 
-        issues = parsed["issues"]
-        if blur_score is not None and blur_score < 40:
-            issues = ["Image appears blurry — hold steady and retake for reliable results"] + issues
+            image = ScanImage(
+                id=image_id,
+                scan_id=scan.id,
+                object_key=object_key,
+                label=label,
+                status="pending",
+                attempts=0,
+            )
 
-        return build_scan_result(
-            parsed["declarations"],
-            parsed["font_ok"],
-            parsed["required_mm"],
-            issues,
-            productName,
-            parsed["raw_text"],
+            session.add(image)
+            image_count += 1
+
+        session.commit()
+
+        return JSONResponse(
+            status_code=202,
+            content={
+                "id": str(scan.id),
+                "status": scan.status,
+                "image_count": image_count,
+            },
         )
+
+    except Exception:
+        session.rollback()
+        raise
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        session.close()
 
 
-@app.get("/api/compliance/scans", response_model=List[ProductScan])
-async def get_scan_history():
-    return []
+@app.get("/api/scans/{scan_id}")
+def get_scan(scan_id: str):
+    session = SessionLocal()
+
+    try:
+        try:
+            scan_uuid = uuid.UUID(scan_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid scan id",
+            )
+
+        statement = (
+            select(Scan)
+            .where(Scan.id == scan_uuid)
+            .options(selectinload(Scan.images))
+        )
+
+        scan = session.execute(statement).scalar_one_or_none()
+
+        if scan is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Scan not found",
+            )
+
+        return {
+            "id": str(scan.id),
+            "status": scan.status,
+            "input_type": scan.input_type,
+            "product_name": scan.product_name,
+            "category": scan.category,
+            "raw_text": scan.raw_text,
+            "mrp": scan.mrp,
+            "net_quantity": scan.net_quantity,
+            "date_of_mfg": scan.date_of_mfg,
+            "manufacturer_address": scan.manufacturer_address,
+            "consumer_care": scan.consumer_care,
+            "font_ok": scan.font_ok,
+            "required_mm": scan.required_mm,
+            "placement_ok": scan.placement_ok,
+            "issues": scan.issues,
+            "created_at": scan.created_at.isoformat(),
+            "updated_at": scan.updated_at.isoformat(),
+            "images": [
+                {
+                    "id": str(image.id),
+                    "label": image.label,
+                    "status": image.status,
+                    "attempts": image.attempts,
+                    "raw_text": image.raw_text,
+                    "declarations": image.declarations,
+                    "font_ok": image.font_ok,
+                    "required_mm": image.required_mm,
+                    "placement_ok": image.placement_ok,
+                    "started_at": (
+                        image.started_at.isoformat()
+                        if image.started_at
+                        else None
+                    ),
+                    "processed_at": (
+                        image.processed_at.isoformat()
+                        if image.processed_at
+                        else None
+                    ),
+                    "error_message": image.error_message,
+                    "created_at": image.created_at.isoformat(),
+                }
+                for image in scan.images
+            ],
+        }
+
+    finally:
+        session.close()
+
+
+@app.get("/api/scans")
+def get_scan_history(
+    page: int = 1,
+    page_size: int = 20,
+    status: Optional[str] = None,
+):
+    if page < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="page must be at least 1",
+        )
+
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="page_size must be between 1 and 100",
+        )
+
+    session = SessionLocal()
+
+    try:
+        statement = select(Scan).order_by(Scan.created_at.desc())
+
+        if status is not None:
+            statement = statement.where(Scan.status == status)
+
+        offset = (page - 1) * page_size
+
+        scans = session.execute(
+            statement.offset(offset).limit(page_size)
+        ).scalars().all()
+
+        return {
+            "page": page,
+            "page_size": page_size,
+            "items": [
+                {
+                    "id": str(scan.id),
+                    "status": scan.status,
+                    "input_type": scan.input_type,
+                    "product_name": scan.product_name,
+                    "created_at": scan.created_at.isoformat(),
+                    "updated_at": scan.updated_at.isoformat(),
+                }
+                for scan in scans
+            ],
+        }
+
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+    )
