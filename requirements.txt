@@ -10,5 +10,8 @@ torchvision==0.22.0+cpu
 SQLAlchemy==2.0.40
 alembic==1.15.2
 psycopg[binary]==3.2.7
+asyncpg==0.30.0
+fastapi-users[sqlalchemy]==14.0.1
 boto3==1.38.13
 pydantic-settings==2.9.1
+pytest==8.3.5

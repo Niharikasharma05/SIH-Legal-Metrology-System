@@ -1,6 +1,6 @@
 import tempfile, os, itertools, datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import Depends, FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -10,6 +10,7 @@ from step2_ocr import extract_text_from_image
 from step3_parser import parse_legal_metrology_declarations
 from settings import settings
 from storage import ensure_bucket
+from auth import User, UserCreate, UserRead, UserUpdate, auth_backend, current_active_officer, fastapi_users
 
 
 @asynccontextmanager
@@ -25,11 +26,15 @@ app = FastAPI(title="SetuCheck Legal Metrology Engine", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.allowed_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/auth/jwt", tags=["auth"])
+app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix="/auth", tags=["auth"])
+app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/users", tags=["users"])
 
 _scan_id_counter = itertools.count(1001)
 
@@ -92,6 +97,7 @@ def build_scan_result(declarations, font_ok, required_mm, issues, product_name, 
 async def scan_compliance(
     file: Optional[UploadFile] = File(None),
     productName: Optional[str] = Form(None),
+    _: User = Depends(current_active_officer),
 ):
     empty_declarations = {
         "mrp": None, "net_quantity": None, "date_of_mfg": None,
@@ -139,7 +145,7 @@ async def scan_compliance(
 
 
 @app.get("/api/compliance/scans", response_model=List[ProductScan])
-async def get_scan_history():
+async def get_scan_history(_: User = Depends(current_active_officer)):
     return []
 
 
