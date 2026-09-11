@@ -1,4 +1,5 @@
 import tempfile, os, itertools, datetime
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,8 +8,20 @@ from typing import List, Optional
 from step1_preprocess import preprocess_image
 from step2_ocr import extract_text_from_image
 from step3_parser import parse_legal_metrology_declarations
+from settings import settings
+from storage import ensure_bucket
 
-app = FastAPI(title="SetuCheck Legal Metrology Engine")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Local development is self-contained; non-local bucket provisioning is
+    # intentionally an explicit deployment responsibility.
+    if settings.is_local:
+        ensure_bucket()
+    yield
+
+
+app = FastAPI(title="SetuCheck Legal Metrology Engine", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,7 +51,10 @@ class ProductScan(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    # This deliberately does not probe infrastructure. It proves the app has
+    # loaded its typed runtime configuration; DB/storage checks belong to the
+    # infra smoke test until the async pipeline is introduced in Phase 2.
+    return {"status": "ok", "environment": settings.app_env}
 
 
 def build_scan_result(declarations, font_ok, required_mm, issues, product_name, raw_text) -> ProductScan:
