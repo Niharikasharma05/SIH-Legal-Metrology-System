@@ -3,10 +3,17 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 
+from auth import (
+    UserCreate,
+    UserRead,
+    UserUpdate,
+    auth_backend,
+    fastapi_users,
+)
 from db import SessionLocal
 from models import Scan, ScanImage
 from settings import settings
@@ -18,8 +25,6 @@ ALLOWED_LABELS = {"front", "back", "side", "other"}
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Local development is self-contained; non-local bucket provisioning is
-    # intentionally an explicit deployment responsibility.
     if settings.is_local:
         ensure_bucket()
     yield
@@ -32,16 +37,32 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.allowed_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+app.include_router(
+    fastapi_users.get_auth_router(auth_backend),
+    prefix="/auth/jwt",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_register_router(UserRead, UserCreate),
+    prefix="/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_users_router(UserRead, UserUpdate),
+    prefix="/users",
+    tags=["users"],
 )
 
 
 @app.get("/health")
 async def health():
-    # Keep health behavior unchanged.
     return {
         "status": "ok",
         "environment": settings.app_env,

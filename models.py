@@ -6,8 +6,19 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID
 
 from db import Base
+
+
+class User(SQLAlchemyBaseUserTableUUID, Base):
+    """Account used for JWT authentication and scan ownership."""
+
+    __tablename__ = "users"
+
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="officer", server_default="officer")
+
+    scans: Mapped[list["Scan"]] = relationship(back_populates="scanned_by")
 
 
 class Scan(Base):
@@ -18,6 +29,9 @@ class Scan(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scanned_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     input_type: Mapped[str] = mapped_column(String(16), nullable=False, default="image")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -37,6 +51,7 @@ class Scan(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     images: Mapped[list["ScanImage"]] = relationship(back_populates="scan", cascade="all, delete-orphan")
+    scanned_by: Mapped[User | None] = relationship(back_populates="scans")
 
 
 class ScanImage(Base):
