@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 from worker import (
     PROCESSING_TIMEOUT,
-    _build_parent_issues,
-    _merge_first_detected,
+    build_missing_issues,
+    merge_declarations,
     recover_stale_processing,
 )
 
@@ -13,6 +13,12 @@ from worker import (
 class FakeExecuteResult:
     def scalar_one_or_none(self):
         return None
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
 
 
 class FakeSession:
@@ -37,7 +43,7 @@ class FakeSession:
 
 
 class TestPhase2Worker(unittest.TestCase):
-    def test_merge_first_detected_uses_first_detected_value(self):
+    def testmerge_declarations_uses_first_detected_value(self):
         first = MagicMock()
         first.declarations = {
             "mrp": None,
@@ -56,7 +62,7 @@ class TestPhase2Worker(unittest.TestCase):
             "consumer_care": "1800 123 4567",
         }
 
-        result = _merge_first_detected([first, second])
+        result = merge_declarations([first, second])
 
         self.assertEqual(result["mrp"], "MRP ₹100")
         self.assertEqual(result["net_quantity"], "500 g")
@@ -70,11 +76,11 @@ class TestPhase2Worker(unittest.TestCase):
             "1800 123 4567",
         )
 
-    def test_merge_first_detected_returns_none_when_missing(self):
+    def testmerge_declarations_returns_none_when_missing(self):
         image = MagicMock()
         image.declarations = {}
 
-        result = _merge_first_detected([image])
+        result = merge_declarations([image])
 
         self.assertEqual(
             result,
@@ -87,7 +93,7 @@ class TestPhase2Worker(unittest.TestCase):
             },
         )
 
-    def test_build_parent_issues_reports_missing_declarations(self):
+    def testbuild_missing_issues_reports_missing_declarations(self):
         declarations = {
             "mrp": None,
             "net_quantity": None,
@@ -96,7 +102,7 @@ class TestPhase2Worker(unittest.TestCase):
             "consumer_care": None,
         }
 
-        issues = _build_parent_issues(
+        issues = build_missing_issues(
             declarations,
             False,
             None,
@@ -116,7 +122,7 @@ class TestPhase2Worker(unittest.TestCase):
             issues,
         )
 
-    def test_build_parent_issues_empty_when_complete_and_readable(self):
+    def testbuild_missing_issues_empty_when_complete_and_readable(self):
         declarations = {
             "mrp": "MRP ₹100",
             "net_quantity": "Net Qty 500 g",
@@ -125,7 +131,7 @@ class TestPhase2Worker(unittest.TestCase):
             "consumer_care": "18001234567",
         }
 
-        issues = _build_parent_issues(
+        issues = build_missing_issues(
             declarations,
             True,
             2,
