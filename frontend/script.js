@@ -160,9 +160,9 @@
   //   manufactureDate      -> Rule 6
   //   manufacturerAddress  -> Rules 6, 10
   //   consumerCare         -> Rule 6
-  //   fontCheck            -> Rule 7 (numeral height)
+  //   fontCheck            -> Readability heuristic (relative, not a measured Rule 7 mm verdict)
   // ============================================================
-  const FIELD_LABELS_EN = { mrp:"Maximum Retail Price", netQuantity:"Net Quantity", manufactureDate:"Date of Manufacture", manufacturerAddress:"Manufacturer/Packer Address", consumerCare:"Consumer Care Details", fontCheck:"Font & Readability (Rule 7)" };
+  const FIELD_LABELS_EN = { mrp:"Maximum Retail Price", netQuantity:"Net Quantity", manufactureDate:"Date of Manufacture", manufacturerAddress:"Manufacturer/Packer Address", consumerCare:"Consumer Care Details", fontCheck:"Font & Readability (heuristic)" };
 
   function renderAll() { renderPosture(); renderReport(sessionScans[0]); renderInspections(); renderAnalytics(); }
 

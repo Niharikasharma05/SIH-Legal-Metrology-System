@@ -82,16 +82,11 @@ class TestPhase2Worker(unittest.TestCase):
 
         result = merge_declarations([image])
 
-        self.assertEqual(
-            result,
-            {
-                "mrp": None,
-                "net_quantity": None,
-                "date_of_mfg": None,
-                "manufacturer_address": None,
-                "consumer_care": None,
-            },
-        )
+        self.assertTrue(all(value is None for value in result.values()))
+        self.assertIn("mrp", result)
+        self.assertIn("net_quantity", result)
+        self.assertIn("unit_price_value", result)
+        self.assertIn("free_qty_value", result)
 
     def testbuild_missing_issues_reports_missing_declarations(self):
         declarations = {
@@ -118,7 +113,9 @@ class TestPhase2Worker(unittest.TestCase):
             issues,
         )
         self.assertIn(
-            "Rule 7: Text may be smaller than the required numeral height",
+            "Readability heuristic: detected text is smaller than a "
+            "general legibility threshold — a relative pixel-based "
+            "estimate, not a measured Rule 7 numeral-height verdict",
             issues,
         )
 
