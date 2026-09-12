@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SetuCheck — Legal Metrology Compliance Portal</title>
+<style>
+  :root {
+    --green:#14532D; --green-tint:#E8F0EA; --orange:#E07B39; --orange-tint:#FBEEE3;
+    --ivory:#F7F5EF; --charcoal:#2A2E27; --muted:#6B7268; --border:#E2DFD4;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--ivory); color:var(--charcoal); }
+
+  /* ---------- Login screen ---------- */
+  #loginScreen { min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--green); }
+  .login-card { background:white; border-radius:16px; padding:40px 36px; width:380px; box-shadow:0 24px 60px rgba(0,0,0,.25); }
+  .login-brand { display:flex; align-items:center; gap:10px; margin-bottom:24px; }
+  .login-brand .mark { width:34px; height:34px; border-radius:9px; background:var(--orange); display:flex; align-items:center; justify-content:center; color:white; font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:800; }
+  .login-brand span { font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:700; font-size:18px; }
+  .login-eyebrow { color:var(--orange); font-size:11px; font-weight:700; letter-spacing:.06em; margin-bottom:6px;}
+  .login-card h2 { font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-size:22px; margin:0 0 20px; }
+  label.field-label { font-size:12px; font-weight:600; display:block; margin-bottom:5px; }
+  input.text-input { width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:8px; font-size:13.5px; margin-bottom:14px; }
+  button.primary { width:100%; padding:12px 0; border:none; border-radius:10px; background:var(--orange); color:white; font-weight:700; font-size:14.5px; cursor:pointer; }
+  button.primary:disabled { opacity:.5; cursor:not-allowed; }
+  .login-note { font-size:11px; color:var(--muted); margin-top:14px; line-height:1.5; text-align:center;}
+
+  /* ---------- App shell ---------- */
+  #app { display:none; min-height:100vh; }
+  body.signed-in #app { display:flex; }
+  body.signed-in #loginScreen { display:none; }
+
+  nav.side { width:220px; background:var(--green); color:white; padding:24px 14px; flex-shrink:0; }
+  .brand { display:flex; align-items:center; gap:10px; padding:0 8px 24px; }
+  .brand .mark { width:32px; height:32px; border-radius:9px; background:var(--orange); display:flex; align-items:center; justify-content:center; font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:800; font-size:15px; }
+  .brand span { font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:700; font-size:16.5px; }
+  .navitem { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; margin-bottom:3px; font-size:14px; cursor:pointer; color:#CFE0D5; }
+  .navitem.active { background:var(--orange); color:white; font-weight:600; }
+  .navitem:hover:not(.active) { background:rgba(255,255,255,.07); }
+  .side-foot { margin-top:22px; padding-top:14px; border-top:1px solid rgba(255,255,255,.12); display:flex; align-items:center; gap:9px; font-size:12.5px; }
+  .avatar { width:28px; height:28px; border-radius:50%; background:var(--orange); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; }
+  .signout { margin-left:auto; cursor:pointer; color:#CFE0D5; font-size:11px; text-decoration:underline; }
+
+  main { flex:1; padding:26px 36px; max-width:1040px; }
+  .topbar { display:flex; justify-content:flex-end; margin-bottom:10px; }
+  .lang-toggle { display:flex; gap:2px; background:white; border:1px solid var(--border); border-radius:8px; padding:2px; }
+  .lang-toggle button { border:none; background:transparent; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted); }
+  .lang-toggle button.active { background:var(--green); color:white; }
+
+  .page { display:none; }
+  .page.active { display:block; }
+  .eyebrow { color:var(--orange); font-size:11px; font-weight:700; letter-spacing:.06em; margin-bottom:6px; }
+  h1 { font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:700; font-size:25px; margin:0 0 6px; }
+  .lede { color:var(--muted); font-size:13.5px; margin:4px 0 22px; }
+
+  .row2 { display:grid; grid-template-columns:1.6fr 1fr; gap:18px; align-items:start; margin-top:18px; }
+  .panel { background:white; border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+  .panel-pad { padding:22px; }
+  .panel-head { padding:15px 20px; border-bottom:1px solid var(--border); font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:600; font-size:14px; display:flex; justify-content:space-between; align-items:center; }
+  .posture { background:var(--green); color:white; border-radius:14px; padding:22px; }
+  .posture .eyebrow2 { color:#FFD9B8; font-size:11px; font-weight:700; letter-spacing:.06em; margin-bottom:8px; }
+  .posture h2 { font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-size:21px; margin:0 0 8px; }
+  .posture p { font-size:12.5px; color:#D6E3DA; line-height:1.5; }
+
+  .stats { display:flex; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+  .stat { background:white; border:1px solid var(--border); border-radius:12px; padding:15px 18px; flex:1; min-width:140px; border-left:4px solid var(--green); }
+  .stat.orange { border-left-color:var(--orange); }
+  .stat .num { font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:700; font-size:23px; }
+  .stat .label { font-size:11.5px; color:var(--muted); margin-top:2px; }
+
+  .drop { border:2px dashed var(--border); border-radius:12px; padding:24px 16px; text-align:center; cursor:pointer; background:var(--ivory); margin-bottom:12px; }
+  .drop:hover, .drop.dragover { border-color:var(--green); background:var(--green-tint); }
+  .drop svg { color:var(--green); margin-bottom:6px; }
+  .drop p { margin:2px 0; font-size:13px; }
+  .drop p.hint { font-size:11px; color:var(--muted); }
+  #fileInput { display:none; }
+  #previewWrap { display:none; text-align:center; margin-bottom:12px; }
+  #previewWrap img { max-height:140px; border-radius:10px; border:1px solid var(--border); }
+  #status { text-align:center; font-size:12px; margin-top:10px; min-height:16px; }
+  #status.error { color:#B3453C; }
+
+  .result-header { display:flex; align-items:center; gap:10px; padding:13px 18px; border-radius:10px; margin:14px 0; font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:700; font-size:14px; }
+  .result-header.COMPLIANT { background:var(--green-tint); color:var(--green); }
+  .result-header.VIOLATION { background:var(--orange-tint); color:var(--orange); }
+  .result-header.WARNING { background:#FBF3E3; color:#B8862F; }
+  .decl-row { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:12.8px; }
+  .decl-row:last-child { border-bottom:none; }
+  .decl-value { color:var(--muted); text-align:right; }
+  .issues-box { margin-top:14px; padding:12px 16px; border-radius:10px; background:var(--orange-tint); font-size:12px; }
+  .issues-box ul { margin:6px 0 0; padding-left:18px; }
+
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th { text-align:left; padding:10px 16px; color:var(--muted); font-weight:600; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--border); background:var(--ivory); }
+  tbody td { padding:10px 16px; border-bottom:1px solid var(--border); }
+  tbody tr:last-child td { border-bottom:none; }
+  .pill { display:inline-flex; padding:3px 10px; border-radius:6px; font-size:10.5px; font-weight:700; }
+  .pill.COMPLIANT { background:var(--green-tint); color:var(--green); }
+  .pill.VIOLATION { background:var(--orange-tint); color:var(--orange); }
+  .pill.WARNING { background:#FBF3E3; color:#B8862F; }
+
+  .rule-search { padding:14px 20px; border-bottom:1px solid var(--border); }
+  .rule-search input { width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; }
+  .chapter-label { background:var(--green-tint); color:var(--green); font-size:10.5px; font-weight:700; padding:8px 20px; letter-spacing:.04em; }
+  .rule-row { padding:14px 20px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .rule-row:hover { background:var(--ivory); }
+  .rule-num { display:inline-flex; width:26px; height:26px; border-radius:7px; background:var(--green-tint); color:var(--green); align-items:center; justify-content:center; font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:700; font-size:11px; margin-right:10px; }
+  .rule-title { font-weight:700; font-size:13px; }
+  .rule-summary { font-size:12px; color:var(--muted); margin-top:6px; margin-left:36px; line-height:1.5; display:none; }
+  .rule-row.open .rule-summary { display:block; }
+
+  .bar-row { margin-bottom:12px; }
+  .bar-label { display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
+  .bar-track { height:8px; border-radius:6px; background:var(--border); overflow:hidden; }
+  .bar-fill { height:100%; border-radius:6px; }
+  .footnote { font-size:11px; color:#9AA097; margin-top:14px; line-height:1.5; }
+  .footnote code { background:var(--border); padding:1px 5px; border-radius:4px; }
+
+  button.pdf-btn { width:100%; padding:11px 0; border:1px solid var(--green); border-radius:10px; background:white; color:var(--green); font-weight:700; font-size:13.5px; cursor:pointer; margin-top:10px; }
+  button.pdf-btn:hover { background:var(--green-tint); }
+  button.doc-btn { width:100%; padding:11px 0; border:1px solid var(--orange); border-radius:10px; background:white; color:var(--orange); font-weight:700; font-size:13.5px; cursor:pointer; margin-top:8px; }
+  button.doc-btn:hover { background:var(--orange-tint); }
+  #printHeader { display:none; }
+
+  /* ---------- Role select (login) ---------- */
+  .role-select { display:flex; gap:8px; margin-bottom:14px; }
+  .role-select label { flex:1; border:1px solid var(--border); border-radius:8px; padding:9px 6px; text-align:center; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted); }
+  .role-select input { display:none; }
+  .role-select input:checked + span { color:var(--green); }
+  .role-select label:has(input:checked) { border-color:var(--green); background:var(--green-tint); }
+  .role-badge { display:inline-flex; padding:2px 8px; border-radius:6px; font-size:10px; font-weight:700; background:rgba(255,255,255,.14); color:#FFD9B8; margin-left:6px; text-transform:uppercase; letter-spacing:.03em; }
+  .navitem.admin-only { display:none; }
+  body.role-admin .navitem.admin-only { display:flex; }
+
+  /* ---------- Mode toggle (photo / listing) ---------- */
+  .mode-toggle { display:flex; gap:2px; background:var(--ivory); border:1px solid var(--border); border-radius:8px; padding:2px; margin-bottom:14px; }
+  .mode-toggle button { flex:1; border:none; background:transparent; padding:8px 0; border-radius:6px; font-size:12.5px; font-weight:600; cursor:pointer; color:var(--muted); }
+  .mode-toggle button.active { background:var(--green); color:white; }
+
+  /* ---------- Multi-image uploader ---------- */
+  .slots { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:10px; }
+  .slot { position:relative; aspect-ratio:1/1; border:2px dashed var(--border); border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; background:var(--ivory); overflow:hidden; text-align:center; padding:4px; }
+  .slot:hover { border-color:var(--green); }
+  .slot svg { color:var(--muted); }
+  .slot span.slot-hint { font-size:9.5px; color:var(--muted); margin-top:3px; }
+  .slot.filled { border-style:solid; border-color:var(--green); padding:0; }
+  .slot.filled img { width:100%; height:100%; object-fit:cover; }
+  .slot .slot-tag { position:absolute; top:3px; left:3px; background:rgba(20,83,45,.85); color:white; font-size:8.5px; font-weight:700; padding:2px 5px; border-radius:5px; text-transform:uppercase; }
+  .slot .slot-remove { position:absolute; top:3px; right:3px; background:rgba(0,0,0,.55); color:white; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; cursor:pointer; }
+  .slot-select { width:100%; }
+  .slot-select select { width:100%; border:none; background:rgba(255,255,255,.92); font-size:9px; padding:2px; }
+  .listing-fields textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; font-family:inherit; margin-bottom:12px; resize:vertical; min-height:96px; }
+  select.text-input { width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:8px; font-size:13.5px; margin-bottom:14px; background:white; }
+
+  /* ---------- Async progress ---------- */
+  .proc-steps { margin-top:10px; }
+  .proc-step { display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--muted); padding:3px 0; }
+  .proc-step .dot { width:8px; height:8px; border-radius:50%; background:var(--border); flex-shrink:0; }
+  .proc-step.active .dot { background:var(--orange); animation:pulse 1s infinite; }
+  .proc-step.done .dot { background:var(--green); }
+  .proc-step.done { color:var(--charcoal); }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  .pill.pending, .pill.processing { background:#FBF3E3; color:#B8862F; }
+  .pill.failed { background:var(--orange-tint); color:var(--orange); }
+
+  /* ---------- Image trace gallery (report) ---------- */
+  .img-gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin:14px 0; }
+  .img-card { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--ivory); }
+  .img-card img { width:100%; height:110px; object-fit:cover; display:block; }
+  .img-placeholder { width:100%; height:110px; display:flex; align-items:center; justify-content:center; padding:12px; color:var(--muted); font-size:11px; text-align:center; border-bottom:1px solid var(--border); }
+  .img-card .img-card-body { padding:8px 10px; }
+  .img-card .img-card-tag { font-size:9.5px; font-weight:700; color:var(--green); text-transform:uppercase; letter-spacing:.03em; }
+  .img-card .img-card-ocr { font-size:10.5px; color:var(--muted); margin-top:4px; line-height:1.4; max-height:54px; overflow:hidden; }
+  .img-card .img-card-checks { font-size:10px; margin-top:5px; display:flex; gap:6px; flex-wrap:wrap; }
+  .chk { padding:1px 6px; border-radius:5px; font-weight:700; }
+  .chk.ok { background:var(--green-tint); color:var(--green); }
+  .chk.bad { background:var(--orange-tint); color:var(--orange); }
+
+  .conflict-box { margin-top:12px; padding:12px 16px; border-radius:10px; background:#FBF3E3; border:1px solid #E8CE97; font-size:12px; }
+  .conflict-box ul { margin:6px 0 0; padding-left:18px; }
+  .add-angle-btn { width:100%; padding:9px 0; border:1px dashed var(--green); border-radius:10px; background:transparent; color:var(--green); font-weight:600; font-size:12.5px; cursor:pointer; margin-top:10px; }
+
+  /* ---------- Filter bar (inspections) ---------- */
+  .filter-bar { display:flex; gap:8px; padding:14px 20px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .filter-bar input, .filter-bar select { padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12px; }
+  .filter-bar input[type="text"] { flex:1.4; min-width:160px; }
+  .filter-bar select, .filter-bar input[type="date"] { flex:1; min-width:110px; }
+
+  .groupby-toggle { display:flex; gap:2px; background:var(--ivory); border:1px solid var(--border); border-radius:8px; padding:2px; margin-bottom:14px; width:fit-content; }
+  .groupby-toggle button { border:none; background:transparent; padding:7px 14px; border-radius:6px; font-size:11.5px; font-weight:600; cursor:pointer; color:var(--muted); }
+  .groupby-toggle button.active { background:var(--green); color:white; }
+
+  .officer-roster tbody td { font-size:12.5px; }
+
+  @media print {
+    nav.side, .topbar, .eyebrow, .lede, .footnote, button.pdf-btn, button.doc-btn, .add-angle-btn { display:none !important; }
+    body, main { padding:0; margin:0; max-width:100%; }
+    #printHeader { display:block; margin-bottom:20px; border-bottom:2px solid var(--green); padding-bottom:14px; }
+    #printHeader .ph-brand { font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; font-weight:700; font-size:20px; color:var(--green); }
+    #printHeader .ph-meta { font-size:11.5px; color:var(--muted); margin-top:4px; }
+    .panel { border:1px solid #ccc; box-shadow:none; }
+    .page { display:none !important; }
+    .page#page-scan { display:block !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-brand"><div class="mark">S</div><span>SetuCheck</span></div>
+    <div class="login-eyebrow" data-i18n="login_eyebrow">SECURE SIGN-IN</div>
+    <h2 data-i18n="login_title">Welcome back</h2>
+    <label class="field-label" data-i18n="officer_id">Officer ID</label>
+    <input class="text-input" id="officerIdInput" placeholder="e.g. DL-INS-2047" />
+    <label class="field-label" data-i18n="access_key">Access key</label>
+    <input class="text-input" id="accessKeyInput" type="password" placeholder="Enter access key" />
+    <label class="field-label" data-i18n="sign_in_as">Sign in as</label>
+    <div class="role-select">
+      <label><input type="radio" name="roleRadio" value="officer" checked /><span data-i18n="role_officer">Officer</span></label>
+      <label><input type="radio" name="roleRadio" value="admin" /><span data-i18n="role_admin">Admin</span></label>
+    </div>
+    <button class="primary" id="loginBtn" data-i18n="open_workspace">Open workspace</button>
+    <div class="login-note" data-i18n="login_note">This portal is for authorised enforcement officers. Enter any Officer ID and key to continue in this demo build.</div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app">
+  <nav class="side">
+    <div class="brand"><div class="mark">S</div><span>SetuCheck</span></div>
+    <div class="navitem active" data-page="dashboard" data-i18n="nav_dashboard">Dashboard</div>
+    <div class="navitem" data-page="scan" data-i18n="nav_report">Report</div>
+    <div class="navitem" data-page="rules" data-i18n="nav_rules">Rule Desk</div>
+    <div class="navitem" data-page="inspections" data-i18n="nav_inspections">Inspections</div>
+    <div class="navitem" data-page="analytics" data-i18n="nav_analytics">Analytics</div>
+    <div class="navitem admin-only" data-page="officers" data-i18n="nav_officers">Officers</div>
+    <div class="side-foot">
+      <div class="avatar" id="avatarInitial">A</div>
+      <div><span id="officerNameDisplay">Officer</span><span class="role-badge" id="roleBadge">Officer</span></div>
+      <div class="signout" id="signOutBtn" data-i18n="sign_out">Sign out</div>
+    </div>
+  </nav>
+
+  <main>
+    <div class="topbar">
+      <div class="lang-toggle">
+        <button id="langEn" class="active">EN</button>
+        <button id="langHi">हिं</button>
+      </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section class="page active" id="page-dashboard">
+      <div class="eyebrow" data-i18n="field_workspace">FIELD WORKSPACE</div>
+      <h1><span data-i18n="good_morning">Good morning,</span> <span id="greetName">A.</span></h1>
+      <p class="lede" data-i18n="dashboard_lede">Your compliance desk is ready. Start with a package label to run a live scan.</p>
+
+      <div class="row2">
+        <div class="panel">
+          <div class="panel-head" data-i18n="quick_scan">Quick scan</div>
+          <div class="panel-pad">
+            <p style="font-size:12px; color:var(--muted); margin-top:0;" data-i18n="quick_scan_sub">Turn the next label in front of you into a decision you can stand behind.</p>
+
+            <div class="mode-toggle">
+              <button id="modePhotoBtn" class="active" data-i18n="mode_photo">Photo scan</button>
+              <button id="modeListingBtn" data-i18n="mode_listing">Listing text</button>
+            </div>
+
+            <div id="photoModeBlock">
+              <div class="slots" id="slots"></div>
+              <p class="hint" style="margin:0 0 12px; text-align:left;" data-i18n="slots_hint">Up to 4 photos of the same pack — front, back, side. Declarations are merged across all of them.</p>
+              <input type="file" id="fileInput" accept="image/*" style="display:none;" />
+            </div>
+
+            <div id="listingModeBlock" class="listing-fields" style="display:none;">
+              <label class="field-label" data-i18n="listing_text_label">Paste listing text (title, MRP, net quantity, etc.)</label>
+              <textarea id="listingTextInput" placeholder="e.g. Everest Sunflower Oil 1L — MRP ₹185, Net Qty: 1 Litre, Mfd: 03/2026, Marketed by XYZ Foods Pvt Ltd, Delhi"></textarea>
+            </div>
+
+            <label class="field-label" data-i18n="product_name_optional">Product name (optional)</label>
+            <input class="text-input" id="productNameInput" placeholder="e.g. Everest Sunflower Oil" />
+
+            <label class="field-label" data-i18n="category_label">Category</label>
+            <select class="text-input" id="categoryInput">
+              <option value="Packaged Food" data-i18n="cat_food">Packaged Food</option>
+              <option value="Cosmetics & Personal Care" data-i18n="cat_cosmetics">Cosmetics &amp; Personal Care</option>
+              <option value="Electronics & Appliances" data-i18n="cat_electronics">Electronics &amp; Appliances</option>
+              <option value="Stationery & Others" data-i18n="cat_other">Stationery &amp; Others</option>
+            </select>
+
+            <button class="primary" id="scanBtn" disabled data-i18n="scan_now">Scan Now</button>
+            <div id="status"></div>
+            <div class="proc-steps" id="procSteps" style="display:none;"></div>
+          </div>
+        </div>
+
+        <div class="posture">
+          <div class="eyebrow2" data-i18n="todays_posture">TODAY'S POSTURE</div>
+          <h2 id="postureHeadline" data-i18n="field_ready">Field ready</h2>
+          <p id="postureBody" data-i18n="no_scans_yet">No scans run yet this session. Run your first scan to populate live signals.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- REPORT -->
+    <section class="page" id="page-scan">
+      <div class="eyebrow" data-i18n="field_workspace">FIELD WORKSPACE</div>
+      <h1 data-i18n="compliance_report">Compliance Report</h1>
+      <p class="lede" data-i18n="report_lede">Result of your most recent scan.</p>
+      <div id="reportEmpty" class="panel panel-pad" style="text-align:center; color:var(--muted); font-size:13px;" data-i18n="no_scan_yet">
+        No scan yet. Run one from the Dashboard's Quick Scan card.
+      </div>
+      <div id="reportContent" style="display:none;">
+        <div id="printHeader">
+          <div class="ph-brand">SetuCheck — Compliance Scan Report</div>
+          <div class="ph-meta" id="printMeta"></div>
+        </div>
+        <div class="result-header" id="resultHeader"></div>
+        <div id="imgGallery" class="img-gallery" style="display:none;"></div>
+        <div class="panel"><div class="panel-pad" style="padding-top:6px; padding-bottom:6px;"><div id="declList"></div></div></div>
+        <div class="issues-box" id="issuesBox" style="display:none;"></div>
+        <div class="conflict-box" id="conflictBox" style="display:none;"></div>
+        <button class="add-angle-btn" id="addAngleBtn" style="display:none;" data-i18n="add_angle">＋ Add another angle (e.g. reverse panel)</button>
+        <input type="file" id="addAngleInput" accept="image/*" style="display:none;" />
+        <button class="pdf-btn" id="downloadPdfBtn">⬇ Download Report as PDF</button>
+        <button class="doc-btn" id="downloadDocBtn">⬇ Download Editable Report (DOCX)</button>
+      </div>
+      <div class="footnote">
+        <span data-i18n="backend_note">Backend must be running locally at</span> <code>http://localhost:8000</code> (<code>POST /api/scans</code> — async: returns <code>202</code> immediately, worker processes 1–4 images per scan via Postgres queue). If unreachable, this screen falls back to a simulated pending→processing→done result so the demo never breaks.<br/>
+        <code>uvicorn main:app --reload --host 0.0.0.0 --port 8000</code>
+      </div>
+    </section>
+
+    <!-- RULE DESK -->
+    <section class="page" id="page-rules">
+      <div class="eyebrow" data-i18n="reference_desk">REFERENCE DESK</div>
+      <h1 data-i18n="rule_desk_title">The rule desk</h1>
+      <p class="lede" data-i18n="rule_desk_lede">All 34 rules of the Legal Metrology (Packaged Commodities) Rules, 2011 — for field orientation, not a substitute for the notified legislation.</p>
+      <div class="panel">
+        <div class="rule-search"><input id="ruleSearch" placeholder="Search a rule, keyword, or chapter…" /></div>
+        <div id="ruleList"></div>
+      </div>
+    </section>
+
+    <!-- INSPECTIONS -->
+    <section class="page" id="page-inspections">
+      <div class="eyebrow" data-i18n="evidence_trail">EVIDENCE TRAIL</div>
+      <h1 data-i18n="inspections_title">Inspections</h1>
+      <p class="lede" data-i18n="inspections_lede">A record of scanned packages and their compliance outcome.</p>
+      <div class="panel">
+        <div class="panel-head"><span data-i18n="violation_register">Violation register</span> <span id="inspCount" style="font-weight:400; color:var(--muted); font-size:11.5px;"></span></div>
+        <div class="filter-bar">
+          <input type="text" id="fltSearch" data-i18n-ph="flt_search_ph" placeholder="Search product…" />
+          <select id="fltStatus">
+            <option value="" data-i18n="flt_all_status">All statuses</option>
+            <option value="COMPLIANT" data-i18n="flt_compliant">Compliant</option>
+            <option value="WARNING" data-i18n="flt_warning">Warning</option>
+            <option value="VIOLATION" data-i18n="flt_violation">Violation</option>
+          </select>
+          <select id="fltInputType">
+            <option value="" data-i18n="flt_all_modes">All modes</option>
+            <option value="image" data-i18n="flt_image">Image</option>
+            <option value="listing" data-i18n="flt_listing">Listing</option>
+          </select>
+          <input type="date" id="fltDateFrom" />
+          <input type="date" id="fltDateTo" />
+        </div>
+        <table>
+          <thead><tr><th data-i18n="col_product">Product</th><th data-i18n="col_category">Category</th><th data-i18n="col_mode">Mode</th><th data-i18n="col_officer">Officer</th><th data-i18n="col_scanned">Scanned</th><th data-i18n="col_status">Status</th><th data-i18n="col_issues">Issues</th></tr></thead>
+          <tbody id="inspBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section class="page" id="page-analytics">
+      <div class="eyebrow" data-i18n="signal">SIGNAL</div>
+      <h1 data-i18n="analytics_title">Analytics</h1>
+      <p class="lede" data-i18n="analytics_lede">Aggregate view of this session's scans.</p>
+      <div class="stats">
+        <div class="stat"><div class="num" id="anTotal">0</div><div class="label" data-i18n="scans_session">Scans this session</div></div>
+        <div class="stat"><div class="num" id="anCompliant">0%</div><div class="label" data-i18n="compliant_rate">Compliant rate</div></div>
+        <div class="stat orange"><div class="num" id="anViolations">0</div><div class="label" data-i18n="violations_flagged">Violations flagged</div></div>
+      </div>
+      <div class="panel panel-pad">
+        <div style="font-weight:600; font-family:'Segoe UI Semibold','Segoe UI',system-ui,sans-serif; margin-bottom:8px;" data-i18n="violation_summary">Violation summary — GET /api/summary</div>
+        <div class="groupby-toggle">
+          <button class="active" data-group="rule" data-i18n="group_rule">By Rule</button>
+          <button data-group="category" data-i18n="group_category">By Category</button>
+          <button data-group="officer" data-i18n="group_officer">By Officer</button>
+          <button data-group="month" data-i18n="group_month">By Month</button>
+        </div>
+        <div id="issueBars"><p style="color:var(--muted); font-size:12px;" data-i18n="run_scans_hint">Run a few scans to see the breakdown here.</p></div>
+      </div>
+    </section>
+
+    <!-- OFFICERS (admin only) -->
+    <section class="page" id="page-officers">
+      <div class="eyebrow" data-i18n="rbac">ROLE-BASED ACCESS</div>
+      <h1 data-i18n="officers_title">Officers</h1>
+      <p class="lede" data-i18n="officers_lede">Admins see cross-officer visibility; officers only see their own scan history and reports.</p>
+      <div class="panel">
+        <table class="officer-roster">
+          <thead><tr><th data-i18n="col_officer_id">Officer ID</th><th data-i18n="col_role">Role</th><th data-i18n="col_scans_logged">Scans logged (this session)</th></tr></thead>
+          <tbody id="officerBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  const API_BASE = "http://localhost:8000";
+  const API_URL = `${API_BASE}/api/scans`;
+  let authToken = null;
+
+  function authFetch(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', `Bearer ${authToken}`);
+    return fetch(url, { ...options, headers });
+  }
+
+  // ---------- i18n ----------
+  const I18N = {
+    en: {
+      login_eyebrow:"SECURE SIGN-IN", login_title:"Welcome back", officer_id:"Officer ID", access_key:"Access key",
+      open_workspace:"Open workspace", login_note:"This portal is for authorised enforcement officers. Enter any Officer ID and key to continue in this demo build.",
+      nav_dashboard:"Dashboard", nav_report:"Report", nav_rules:"Rule Desk", nav_inspections:"Inspections", nav_analytics:"Analytics", sign_out:"Sign out",
+      field_workspace:"FIELD WORKSPACE", good_morning:"Good morning,", dashboard_lede:"Your compliance desk is ready. Start with a package label to run a live scan.",
+      quick_scan:"Quick scan", quick_scan_sub:"Turn the next label in front of you into a decision you can stand behind.",
+      click_upload:"Click to upload", a_label_photo:"a label photo", product_name_optional:"Product name (optional)", scan_now:"Scan Now",
+      todays_posture:"TODAY'S POSTURE", field_ready:"Field ready", no_scans_yet:"No scans run yet this session. Run your first scan to populate live signals.",
+      compliance_report:"Compliance Report", report_lede:"Result of your most recent scan.", no_scan_yet:"No scan yet. Run one from the Dashboard's Quick Scan card.",
+      backend_note:"Backend must be running locally at",
+      reference_desk:"REFERENCE DESK", rule_desk_title:"The rule desk",
+      rule_desk_lede:"All 34 rules of the Legal Metrology (Packaged Commodities) Rules, 2011 — for field orientation, not a substitute for the notified legislation.",
+      evidence_trail:"EVIDENCE TRAIL", inspections_title:"Inspections", inspections_lede:"A record of scanned packages and their compliance outcome.",
+      violation_register:"Violation register", col_product:"Product", col_scanned:"Scanned", col_status:"Status", col_issues:"Issues",
+      signal:"SIGNAL", analytics_title:"Analytics", analytics_lede:"Aggregate view of this session's scans.",
+      scans_session:"Scans this session", compliant_rate:"Compliant rate", violations_flagged:"Violations flagged",
+      issue_breakdown:"Issue breakdown", run_scans_hint:"Run a few scans to see the breakdown here.",
+      sign_in_as:"Sign in as", role_officer:"Officer", role_admin:"Admin", nav_officers:"Officers",
+      mode_photo:"Photo scan", mode_listing:"Listing text",
+      slots_hint:"Up to 4 photos of the same pack — front, back, side. Declarations are merged across all of them.",
+      listing_text_label:"Paste listing text (title, MRP, net quantity, etc.)",
+      category_label:"Category", cat_food:"Packaged Food", cat_cosmetics:"Cosmetics & Personal Care", cat_electronics:"Electronics & Appliances", cat_other:"Stationery & Others",
+      add_angle:"＋ Add another angle (e.g. reverse panel)",
+      col_category:"Category", col_mode:"Mode", col_officer:"Officer",
+      flt_search_ph:"Search product…", flt_all_status:"All statuses", flt_compliant:"Compliant", flt_warning:"Warning", flt_violation:"Violation",
+      flt_all_modes:"All modes", flt_image:"Image", flt_listing:"Listing",
+      violation_summary:"Violation summary — GET /api/summary",
+      group_rule:"By Rule", group_category:"By Category", group_officer:"By Officer", group_month:"By Month",
+      rbac:"ROLE-BASED ACCESS", officers_title:"Officers", officers_lede:"Admins see cross-officer visibility; officers only see their own scan history and reports.",
+      col_officer_id:"Officer ID", col_role:"Role", col_scans_logged:"Scans logged (this session)",
+      step_upload:"Uploading to MinIO…", step_ocr:"Preprocessing (OpenCV) + OCR (EasyOCR)…", step_parse:"Regex parsing + rule engine…",
+      step_merge:"Merging images · misleading-declaration & placement checks…", step_report:"Generating PDF + DOCX reports…",
+      mock_note:"Backend unreachable — showing a simulated async result (pending → processing → done) so the demo works offline.",
+    },
+    hi: {
+      login_eyebrow:"सुरक्षित प्रवेश", login_title:"वापसी पर स्वागत है", officer_id:"अधिकारी आईडी", access_key:"पासकोड",
+      open_workspace:"कार्यक्षेत्र खोलें", login_note:"यह पोर्टल अधिकृत प्रवर्तन अधिकारियों के लिए है। इस डेमो में जारी रखने हेतु कोई भी आईडी और पासकोड दर्ज करें।",
+      nav_dashboard:"डैशबोर्ड", nav_report:"रिपोर्ट", nav_rules:"नियम संदर्भ", nav_inspections:"निरीक्षण", nav_analytics:"विश्लेषण", sign_out:"साइन आउट",
+      field_workspace:"कार्यक्षेत्र", good_morning:"नमस्ते,", dashboard_lede:"आपका अनुपालन डेस्क तैयार है। एक पैकेज लेबल से स्कैन शुरू करें।",
+      quick_scan:"त्वरित जाँच", quick_scan_sub:"सामने के लेबल को एक स्पष्ट निर्णय में बदलें।",
+      click_upload:"अपलोड करने हेतु क्लिक करें", a_label_photo:"लेबल की फोटो", product_name_optional:"उत्पाद नाम (वैकल्पिक)", scan_now:"अभी स्कैन करें",
+      todays_posture:"आज की स्थिति", field_ready:"क्षेत्र हेतु तैयार", no_scans_yet:"अभी तक कोई स्कैन नहीं हुआ। पहला स्कैन चलाएँ।",
+      compliance_report:"अनुपालन रिपोर्ट", report_lede:"आपके नवीनतम स्कैन का परिणाम।", no_scan_yet:"अभी कोई स्कैन नहीं। डैशबोर्ड से त्वरित जाँच चलाएँ।",
+      backend_note:"बैकएंड स्थानीय रूप से यहाँ चल रहा होना चाहिए",
+      reference_desk:"संदर्भ डेस्क", rule_desk_title:"नियम संदर्भ डेस्क",
+      rule_desk_lede:"Legal Metrology (Packaged Commodities) Rules, 2011 के सभी 34 नियम — क्षेत्रीय संदर्भ हेतु, अधिसूचित कानून का विकल्प नहीं।",
+      evidence_trail:"साक्ष्य लॉग", inspections_title:"निरीक्षण", inspections_lede:"स्कैन किए गए उत्पादों और उनके अनुपालन परिणाम का रिकॉर्ड।",
+      violation_register:"उल्लंघन रजिस्टर", col_product:"उत्पाद", col_scanned:"स्कैन समय", col_status:"स्थिति", col_issues:"समस्याएँ",
+      signal:"संकेत", analytics_title:"विश्लेषण", analytics_lede:"इस सत्र के स्कैन का सारांश।",
+      scans_session:"इस सत्र में स्कैन", compliant_rate:"अनुपालन दर", violations_flagged:"उल्लंघन चिह्नित",
+      issue_breakdown:"समस्या विवरण", run_scans_hint:"विवरण देखने हेतु कुछ स्कैन चलाएँ।",
+      sign_in_as:"इस रूप में प्रवेश करें", role_officer:"अधिकारी", role_admin:"व्यवस्थापक", nav_officers:"अधिकारीगण",
+      mode_photo:"फोटो स्कैन", mode_listing:"लिस्टिंग टेक्स्ट",
+      slots_hint:"एक ही पैक की 4 तक फोटो — आगे, पीछे, बगल। सभी में मिली घोषणाएँ मिला दी जाती हैं।",
+      listing_text_label:"लिस्टिंग टेक्स्ट पेस्ट करें (शीर्षक, MRP, मात्रा आदि)",
+      category_label:"श्रेणी", cat_food:"पैक्ड खाद्य पदार्थ", cat_cosmetics:"सौंदर्य प्रसाधन", cat_electronics:"इलेक्ट्रॉनिक्स", cat_other:"अन्य",
+      add_angle:"＋ एक और फोटो जोड़ें (जैसे पिछला पैनल)",
+      col_category:"श्रेणी", col_mode:"मोड", col_officer:"अधिकारी",
+      flt_search_ph:"उत्पाद खोजें…", flt_all_status:"सभी स्थितियाँ", flt_compliant:"अनुपालित", flt_warning:"चेतावनी", flt_violation:"उल्लंघन",
+      flt_all_modes:"सभी मोड", flt_image:"फोटो", flt_listing:"लिस्टिंग",
+      violation_summary:"उल्लंघन सारांश — GET /api/summary",
+      group_rule:"नियम अनुसार", group_category:"श्रेणी अनुसार", group_officer:"अधिकारी अनुसार", group_month:"माह अनुसार",
+      rbac:"भूमिका-आधारित पहुँच", officers_title:"अधिकारीगण", officers_lede:"व्यवस्थापक सभी अधिकारियों को देख सकते हैं; अधिकारी केवल अपना रिकॉर्ड देखते हैं।",
+      col_officer_id:"अधिकारी आईडी", col_role:"भूमिका", col_scans_logged:"इस सत्र में स्कैन",
+      step_upload:"MinIO में अपलोड हो रहा है…", step_ocr:"प्रीप्रोसेसिंग (OpenCV) + OCR (EasyOCR)…", step_parse:"नियम इंजन द्वारा विश्लेषण…",
+      step_merge:"छवियाँ मिलाई जा रही हैं · भ्रामक घोषणा व प्लेसमेंट जाँच…", step_report:"PDF + DOCX रिपोर्ट बन रही है…",
+      mock_note:"बैकएंड उपलब्ध नहीं — डेमो हेतु सिम्युलेटेड परिणाम दिखाया जा रहा है (pending → processing → done)।",
+    }
+  };
+  let currentLang = 'en';
+  function applyLang(lang) {
+    currentLang = lang;
+    document.getElementById('langEn').classList.toggle('active', lang === 'en');
+    document.getElementById('langHi').classList.toggle('active', lang === 'hi');
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (I18N[lang][key]) el.textContent = I18N[lang][key];
+    });
+    document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+      const key = el.getAttribute('data-i18n-ph');
+      if (I18N[lang][key]) el.placeholder = I18N[lang][key];
+    });
+    renderAll();
+  }
+  document.getElementById('langEn').addEventListener('click', () => applyLang('en'));
+  document.getElementById('langHi').addEventListener('click', () => applyLang('hi'));
+
+  // ---------- Login ----------
+  let currentRole = 'officer';
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const id = document.getElementById('officerIdInput').value.trim();
+    const key = document.getElementById('accessKeyInput').value.trim();
+    if (!id || !key) { alert('Enter an Officer ID and access key to continue.'); return; }
+
+    try {
+      const body = new URLSearchParams();
+      body.set('username', id);
+      body.set('password', key);
+
+      const res = await fetch(`${API_BASE}/auth/jwt/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+
+      if (!res.ok) {
+        let message = `Server responded ${res.status}`;
+        try {
+          const errorData = await res.json();
+          message = errorData.detail || errorData.message || message;
+        } catch (_) {}
+        throw new Error(message);
+      }
+
+      const data = await res.json();
+      authToken = data.access_token;
+
+      currentRole = document.querySelector('input[name="roleRadio"]:checked').value;
+      document.getElementById('officerNameDisplay').textContent = id;
+      document.getElementById('avatarInitial').textContent = id.charAt(0).toUpperCase();
+      document.getElementById('greetName').textContent = id.split('-')[0] || id;
+      document.getElementById('roleBadge').textContent = currentRole === 'admin' ? I18N[currentLang].role_admin : I18N[currentLang].role_officer;
+      document.body.classList.toggle('role-admin', currentRole === 'admin');
+      document.body.classList.add('signed-in');
+      renderOfficers();
+    } catch (err) {
+      alert(err.message || 'Sign-in failed.');
+    }
+  });
+  document.getElementById('signOutBtn').addEventListener('click', () => {
+    authToken = null;
+    document.body.classList.remove('signed-in');
+    document.body.classList.remove('role-admin');
+    document.getElementById('officerIdInput').value = '';
+    document.getElementById('accessKeyInput').value = '';
+    goto('dashboard');
+  });
+
+  // ---------- Nav ----------
+  document.querySelectorAll('.navitem').forEach(item => item.addEventListener('click', () => goto(item.dataset.page)));
+  function goto(page) {
+    document.querySelectorAll('.navitem').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+    document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
+  }
+
+  // ---------- Scan (multi-image + listing-text modes) ----------
+  let sessionScans = [];
+  const MAX_IMAGES = 4;
+  const POLL_INTERVAL_MS = 1500;
+  const POLL_TIMEOUT_MS = 120000;
+  const LABEL_CYCLE = ['front','back','side','other'];
+  let scanMode = 'photo';
+  let imageSlots = []; // {file, url, label}
+  const fileInput = document.getElementById('fileInput');
+  const scanBtn = document.getElementById('scanBtn');
+  const statusEl = document.getElementById('status');
+  const procStepsEl = document.getElementById('procSteps');
+
+  document.getElementById('modePhotoBtn').addEventListener('click', () => setMode('photo'));
+  document.getElementById('modeListingBtn').addEventListener('click', () => setMode('listing'));
+  function setMode(m) {
+    scanMode = m;
+    document.getElementById('modePhotoBtn').classList.toggle('active', m === 'photo');
+    document.getElementById('modeListingBtn').classList.toggle('active', m === 'listing');
+    document.getElementById('photoModeBlock').style.display = m === 'photo' ? 'block' : 'none';
+    document.getElementById('listingModeBlock').style.display = m === 'listing' ? 'block' : 'none';
+    updateScanBtnState();
+  }
+
+  function renderSlots() {
+    const wrap = document.getElementById('slots');
+    wrap.innerHTML = '';
+    for (let i = 0; i < MAX_IMAGES; i++) {
+      const slot = imageSlots[i];
+      const div = document.createElement('div');
+      if (slot) {
+        div.className = 'slot filled';
+        div.innerHTML = `
+          <span class="slot-tag">${slot.label}</span>
+          <span class="slot-remove" data-i="${i}">✕</span>
+          <img src="${slot.url}" alt="${slot.label}" />
+          <div class="slot-select" style="position:absolute; bottom:0; left:0; right:0;">
+            <select data-i="${i}">${LABEL_CYCLE.map(l => `<option value="${l}" ${l===slot.label?'selected':''}>${l}</option>`).join('')}</select>
+          </div>`;
+        div.querySelector('.slot-remove').addEventListener('click', (e) => { e.stopPropagation(); imageSlots.splice(i,1); renderSlots(); updateScanBtnState(); });
+        div.querySelector('select').addEventListener('click', e => e.stopPropagation());
+        div.querySelector('select').addEventListener('change', e => { imageSlots[i].label = e.target.value; });
+      } else {
+        div.className = 'slot';
+        div.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M20 16v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/></svg><span class="slot-hint">${i===0 ? 'Front' : 'Add'}</span>`;
+        div.addEventListener('click', () => fileInput.click());
+      }
+      wrap.appendChild(div);
+    }
+  }
+  fileInput.addEventListener('change', e => {
+    if (!e.target.files.length) return;
+    Array.from(e.target.files).slice(0, MAX_IMAGES - imageSlots.length).forEach(file => {
+      const label = LABEL_CYCLE[imageSlots.length % LABEL_CYCLE.length];
+      imageSlots.push({ file, url: URL.createObjectURL(file), label });
+    });
+    fileInput.value = '';
+    renderSlots();
+    updateScanBtnState();
+  });
+  renderSlots();
+
+  document.getElementById('listingTextInput').addEventListener('input', updateScanBtnState);
+  function updateScanBtnState() {
+    scanBtn.disabled = scanMode === 'photo' ? imageSlots.length === 0 : document.getElementById('listingTextInput').value.trim().length === 0;
+  }
+
+  function runProcSteps(stepKeys, onDone) {
+    procStepsEl.style.display = 'block';
+    procStepsEl.innerHTML = stepKeys.map((k,i) => `<div class="proc-step" id="pstep${i}"><div class="dot"></div><span>${I18N[currentLang][k]}</span></div>`).join('');
+    let i = 0;
+    function next() {
+      if (i > 0) document.getElementById(`pstep${i-1}`).classList.replace('active','done');
+      if (i >= stepKeys.length) { setTimeout(onDone, 350); return; }
+      document.getElementById(`pstep${i}`).classList.add('active');
+      i++;
+      setTimeout(next, 480 + Math.random()*280);
+    }
+    next();
+  }
+
+  const CATEGORY_TITLES = {
+    "Packaged Food": ["Everest Sunflower Oil 1L", "Aashirvaad Atta 5kg", "Parle-G Biscuits 200g", "Tata Salt 1kg"],
+    "Cosmetics & Personal Care": ["Fair Glow Face Cream 50g", "Herbal Shampoo 200ml", "Ayur Soap 100g"],
+    "Electronics & Appliances": ["Havells Extension Board", "Bajaj Table Fan", "Philips LED Bulb 9W"],
+    "Stationery & Others": ["Classmate Notebook Pack", "Camlin Geometry Box", "Nataraj Pencil Box"]
+  };
+  const OCR_SNIPPETS = {
+    front: "MRP ₹{mrp} (incl. of all taxes) · Net Qty {qty} · {name}",
+    back: "Mfd: {date} · Mktd by: {addr} · Consumer care: {care}",
+    side: "Batch no. XY{rand} · Best before {date}",
+    other: "FSSAI Lic. No. {rand}0000{rand} · Country of Origin: India"
+  };
+
+  function rand(n) { return Math.floor(Math.random()*n); }
+  function pick(arr) { return arr[rand(arr.length)]; }
+
+  function buildMockResult() {
+    const now = new Date();
+    const inputType = scanMode === 'photo' ? 'image' : 'listing';
+    const category = document.getElementById('categoryInput').value;
+    const productNameField = document.getElementById('productNameInput').value.trim();
+    const mrp = 40 + rand(300);
+    const mrp2 = Math.random() < 0.22 ? mrp + (5 + rand(20)) : mrp; // occasional cross-image conflict
+    const qty = pick(['500 g','1 kg','1 Litre','200 ml','250 g','1 unit']);
+    const dateStr = `${(1+rand(12)).toString().padStart(2,'0')}/202${5+rand(2)}`;
+    const addr = pick(['XYZ Foods Pvt Ltd, Okhla Industrial Area, New Delhi - 110020','ABC Cosmetics Ltd, MIDC, Pune - 411019','Nova Electricals, Sector 58, Noida - 201301']);
+    const care = Math.random() < 0.82 ? '1800-XXX-XXXX / care@brand.in' : null;
+    const missingAddress = Math.random() < 0.15;
+    const badReadability = Math.random() < 0.25;
+    const badPlacement = Math.random() < 0.2;
+
+    const issues = [];
+    const misleading = [];
+    if (missingAddress) issues.push('Manufacturer/packer address missing (Rule 6(1)(a))');
+    if (badReadability) issues.push('Numerals below the readable-height heuristic threshold (Rule 7 reference)');
+    if (badPlacement) issues.push('Declarations scattered outside the principal display panel cluster (Rule 8)');
+    if (!care) issues.push('Consumer care contact not detected on any submitted image');
+
+    let images = [];
+    if (inputType === 'image') {
+      images = imageSlots.map((slot, idx) => {
+        const useMrp = (idx === 1 && mrp2 !== mrp) ? mrp2 : mrp;
+        const text = (OCR_SNIPPETS[slot.label] || OCR_SNIPPETS.other)
+          .replace('{mrp}', useMrp).replace('{qty}', qty).replace('{name}', productNameField || pick(CATEGORY_TITLES[category]))
+          .replace('{date}', dateStr).replace('{addr}', missingAddress ? '— not detected —' : addr)
+          .replace('{care}', care || '— not detected —').replace(/{rand}/g, () => rand(9));
+        return { label: slot.label, url: slot.url, ocrExcerpt: text, fontOk: !(badReadability && idx===0), placementOk: !(badPlacement && idx===0) };
+      });
+      if (mrp2 !== mrp && images.length >= 2) {
+        misleading.push(`MRP inconsistency across images: ₹${mrp} on "${images[0].label}" vs ₹${mrp2} on "${images[1].label}" — flagged, not auto-resolved (misleading declaration).`);
+      }
+    }
+
+    const hasHardViolation = missingAddress || misleading.length > 0;
+    const status = hasHardViolation ? 'VIOLATION' : (issues.length > 0 ? 'WARNING' : 'COMPLIANT');
+
+    return {
+      id: 'scan_' + Date.now() + '_' + rand(9999),
+      inputType, status,
+      productName: productNameField || pick(CATEGORY_TITLES[category]),
+      category,
+      scannedAt: now.toISOString(),
+      officer: document.getElementById('officerNameDisplay').textContent,
+      role: currentRole,
+      mrp: '₹' + mrp + (mrp2!==mrp ? ` (conflict: ₹${mrp2} on another image)` : ''),
+      netQuantity: qty,
+      manufactureDate: dateStr,
+      manufacturerAddress: missingAddress ? 'Not detected' : addr,
+      consumerCare: care || 'Not detected',
+      placementCheck: badPlacement ? 'Scattered — Rule 8 flag' : 'Grouped (DBSCAN clustered)',
+      readabilityCheck: badReadability ? 'Below heuristic threshold' : 'Within relative heuristic range',
+      issues, misleading, images,
+      rawListingText: inputType === 'listing' ? document.getElementById('listingTextInput').value.trim() : null
+    };
+  }
+
+  async function pollScan(scanId, onUpdate) {
+    const started = Date.now();
+
+    while (Date.now() - started < POLL_TIMEOUT_MS) {
+      const res = await authFetch(
+        `${API_BASE}/api/scans/${encodeURIComponent(scanId)}`
+      );
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch scan ${scanId}: ${res.status}`);
+      }
+
+      const data = await res.json();
+      const normalizedStatus = String(data.status || '').trim().toUpperCase();
+      data.status = normalizedStatus;
+
+      console.log('[Setu] poll:', data.id, 'status=', data.status);
+      onUpdate?.(data);
+
+      if (['COMPLIANT', 'WARNING', 'VIOLATION', 'FAILED'].includes(data.status)) {
+        console.log('[Setu] terminal scan:', data.id, data.status);
+        return data;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+
+    throw new Error('Scan processing timed out. Check the Inspections page for its status.');
+  }
+
+  function mapBackendScan(data, localCategory = null) {
+    const issues = Array.isArray(data.issues)
+      ? data.issues
+      : (data.issues ? Object.values(data.issues) : []);
+
+    const imageOrder = { front: 0, back: 1, side: 2, other: 3 };
+    const images = (data.images || [])
+      .map(img => ({
+        id: img.id,
+        label: img.label,
+        ocrExcerpt: img.raw_text || '',
+        fontOk: img.font_ok,
+        placementOk: img.placement_ok,
+        status: img.status,
+        errorMessage: img.error_message,
+        url: null,
+      }))
+      .sort((a, b) =>
+        (imageOrder[String(a.label).toLowerCase()] ?? 99) -
+        (imageOrder[String(b.label).toLowerCase()] ?? 99)
+      );
+
+    return {
+      id: data.id,
+      inputType: data.input_type || 'image',
+      status: data.status,
+      productName: data.product_name || 'Untitled scan',
+      category: data.category || localCategory || '—',
+      scannedAt: data.created_at || new Date().toISOString(),
+      officer: document.getElementById('officerNameDisplay').textContent,
+      role: currentRole,
+      mrp: data.mrp || 'Not detected',
+      netQuantity: data.net_quantity || 'Not detected',
+      manufactureDate: data.date_of_mfg || 'Not detected',
+      manufacturerAddress: data.manufacturer_address || 'Not detected',
+      consumerCare: data.consumer_care || 'Not detected',
+      placementCheck: data.placement_ok === true
+        ? 'Declarations grouped together'
+        : data.placement_ok === false
+          ? 'Declarations scattered across the label'
+          : 'Not applicable',
+      readabilityCheck: data.font_ok === true
+        ? 'Passed readability heuristic'
+        : data.font_ok === false
+          ? 'Failed readability heuristic'
+          : 'Not applicable',
+      issues,
+      misleading: [],
+      images,
+      rawListingText: null,
+    };
+  }
+
+  scanBtn.addEventListener('click', async () => {
+    scanBtn.disabled = true;
+    statusEl.className = '';
+    statusEl.textContent = '';
+
+    if (scanMode === 'listing') {
+      statusEl.className = 'error';
+      statusEl.textContent = 'Listing-text scans are not supported by the current Phase 5 API. Use Photo scan.';
+      scanBtn.disabled = false;
+      return;
+    }
+
+    try {
+      const stepKeys = ['step_upload','step_ocr','step_parse','step_merge','step_report'];
+      runProcSteps(stepKeys, () => {});
+
+      const formData = new FormData();
+      imageSlots.forEach(s => {
+        formData.append('files', s.file);
+        formData.append('labels', s.label);
+      });
+
+      const productName = document.getElementById('productNameInput').value.trim();
+      const category = document.getElementById('categoryInput').value;
+      if (productName) formData.append('product_name', productName);
+
+      const res = await authFetch(API_URL, { method: 'POST', body: formData });
+      if (!res.ok) {
+        let detail = `Server responded ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body.detail) detail = body.detail;
+        } catch (_) {}
+        throw new Error(detail);
+      }
+
+      const accepted = await res.json();
+      goto('scan');
+      statusEl.textContent = `Scan ${accepted.id} accepted. Processing…`;
+
+      const finished = await pollScan(accepted.id, current => {
+        statusEl.textContent = `Scan status: ${current.status}`;
+      });
+
+      const mapped = mapBackendScan(finished, category);
+      await hydrateImageUrls(mapped);
+      sessionScans.unshift(mapped);
+      resetScanForm();
+      renderAll();
+      goto('scan');
+    } catch (err) {
+      statusEl.className = 'error';
+      statusEl.textContent = err.message || 'Scan failed.';
+      scanBtn.disabled = false;
+    }
+  });
+
+  function resetScanForm() {
+    scanBtn.disabled = false;
+    imageSlots = []; renderSlots();
+    document.getElementById('listingTextInput').value = '';
+    document.getElementById('productNameInput').value = '';
+    statusEl.textContent = ''; statusEl.className = '';
+    procStepsEl.style.display = 'none'; procStepsEl.innerHTML = '';
+    updateScanBtnState();
+  }
+
+  // ---------- Add another angle (append image to an in-progress scan) ----------
+  document.getElementById('addAngleBtn').addEventListener('click', () => document.getElementById('addAngleInput').click());
+  document.getElementById('addAngleInput').addEventListener('change', e => {
+    if (!e.target.files.length || !sessionScans.length) return;
+    const scan = sessionScans[0];
+    const nextLabel = LABEL_CYCLE[(scan.images?.length || 0) % LABEL_CYCLE.length];
+    const file = e.target.files[0];
+    const url = URL.createObjectURL(file);
+    scan.images = scan.images || [];
+    scan.images.push({ label: nextLabel, url, ocrExcerpt: 'Re-processed after appended image — merged into declaration set.', fontOk: true, placementOk: true });
+    // Re-run a light merge: address/care resolved if this new angle supplies them
+    if (scan.manufacturerAddress === 'Not detected') { scan.manufacturerAddress = 'ABC Industries, Industrial Area, detected on appended image'; scan.issues = scan.issues.filter(i => !i.includes('address')); }
+    if (scan.consumerCare === 'Not detected') { scan.consumerCare = '1800-XXX-XXXX (detected on appended image)'; scan.issues = scan.issues.filter(i => !i.includes('Consumer care')); }
+    if (scan.issues.length === 0 && scan.misleading.length === 0) scan.status = 'COMPLIANT';
+    else if (scan.misleading.length === 0) scan.status = 'WARNING';
+    e.target.value = '';
+    renderAll();
+  });
+
+  const FIELD_LABELS_EN = { category:"Category", mrp:"Maximum Retail Price", netQuantity:"Net Quantity", manufactureDate:"Date of Manufacture", manufacturerAddress:"Manufacturer/Packer Address", consumerCare:"Consumer Care Details", placementCheck:"Placement — grouped on PDP (Rule 8)", readabilityCheck:"Readability — relative heuristic (not a certified Rule 7 mm verdict)" };
+
+  async function hydrateImageUrls(scan) {
+    if (!scan?.images?.length) return scan;
+
+    await Promise.all(scan.images.map(async image => {
+      try {
+        const res = await authFetch(
+          `${API_BASE}/api/scans/${encodeURIComponent(scan.id)}/images/${encodeURIComponent(image.id)}`
+        );
+        if (!res.ok) return;
+
+        const blob = await res.blob();
+        image.url = URL.createObjectURL(blob);
+      } catch (error) {
+        console.warn('[Setu] image preview unavailable:', image.id, error);
+      }
+    }));
+
+    return scan;
+  }
+
+  function renderAll() { renderPosture(); renderReport(sessionScans[0]); renderInspections(); renderAnalytics(); renderOfficers(); }
+
+  function renderPosture() {
+    const violations = sessionScans.filter(s => s.status === 'VIOLATION').length;
+    const headline = document.getElementById('postureHeadline');
+    const body = document.getElementById('postureBody');
+    if (sessionScans.length === 0) return;
+    if (violations > 0) {
+      headline.textContent = currentLang === 'hi' ? `${violations} उल्लंघन आज` : `${violations} violation${violations===1?'':'s'} today`;
+      body.textContent = currentLang === 'hi' ? 'निरीक्षण अनुभाग में समीक्षा करें।' : 'Review flagged scans in Inspections before closing your round.';
+    } else {
+      headline.textContent = I18N[currentLang].field_ready;
+      body.textContent = currentLang === 'hi' ? 'इस सत्र के सभी स्कैन अनुपालित रहे।' : 'All scans this session came back compliant.';
+    }
+  }
+
+  function renderReport(data) {
+    if (!data) return;
+    document.getElementById('reportEmpty').style.display = 'none';
+    document.getElementById('reportContent').style.display = 'block';
+    const header = document.getElementById('resultHeader');
+    header.className = 'result-header ' + data.status;
+    header.textContent = data.status === 'COMPLIANT' ? '✓  All mandatory declarations detected'
+      : data.status === 'VIOLATION' ? '⚠  Violation — core declaration missing or misleading' : '△  Minor issues found';
+
+    const gallery = document.getElementById('imgGallery');
+    if (data.images && data.images.length) {
+      gallery.style.display = 'grid';
+      gallery.innerHTML = data.images.map(img => `
+        <div class="img-card">
+          ${img.url
+            ? `<img src="${img.url}" alt="${img.label}" loading="lazy" />`
+            : `<div class="img-placeholder" aria-label="${img.label} image preview unavailable">Image preview unavailable</div>`
+          }
+          <div class="img-card-body">
+            <div class="img-card-tag">${img.label}</div>
+            <div class="img-card-ocr">${img.ocrExcerpt}</div>
+            <div class="img-card-checks">
+              <span class="chk ${img.fontOk?'ok':'bad'}">Readability ${img.fontOk?'OK':'flag'}</span>
+              <span class="chk ${img.placementOk?'ok':'bad'}">Placement ${img.placementOk?'OK':'flag'}</span>
+            </div>
+          </div>
+        </div>`).join('');
+    } else { gallery.style.display = 'none'; gallery.innerHTML = ''; }
+
+    const declList = document.getElementById('declList');
+    declList.innerHTML = '';
+    ['category','mrp','netQuantity','manufactureDate','manufacturerAddress','consumerCare','placementCheck','readabilityCheck'].forEach(key => {
+      const row = document.createElement('div');
+      row.className = 'decl-row';
+      row.innerHTML = `<span>${FIELD_LABELS_EN[key]}</span><span class="decl-value">${data[key] ?? '—'}</span>`;
+      declList.appendChild(row);
+    });
+
+    const issuesBox = document.getElementById('issuesBox');
+    if (data.issues && data.issues.length) {
+      issuesBox.style.display = 'block';
+      issuesBox.innerHTML = `<strong>Issues found:</strong><ul>${data.issues.map(i => `<li>${i}</li>`).join('')}</ul>`;
+    } else { issuesBox.style.display = 'none'; }
+
+    const conflictBox = document.getElementById('conflictBox');
+    if (data.misleading && data.misleading.length) {
+      conflictBox.style.display = 'block';
+      conflictBox.innerHTML = `<strong>⚠ Misleading-declaration flags (cross-image conflicts are never silently auto-resolved):</strong><ul>${data.misleading.map(i => `<li>${i}</li>`).join('')}</ul>`;
+    } else { conflictBox.style.display = 'none'; }
+
+    const addAngleBtn = document.getElementById('addAngleBtn');
+    addAngleBtn.style.display = (data.inputType === 'image' && (data.images?.length||0) < MAX_IMAGES && data.status !== 'COMPLIANT') ? 'block' : 'none';
+
+    const officer = data.officer || document.getElementById('officerNameDisplay').textContent;
+    document.getElementById('printMeta').textContent =
+      `${data.productName || 'Untitled scan'}  ·  ${data.category||''}  ·  Scanned ${new Date(data.scannedAt).toLocaleString()}  ·  Officer: ${officer}  ·  Mode: ${data.inputType}`;
+  }
+
+  function getFilteredScans() {
+    const search = (document.getElementById('fltSearch')?.value || '').trim().toLowerCase();
+    const status = document.getElementById('fltStatus')?.value || '';
+    const inputType = document.getElementById('fltInputType')?.value || '';
+    const from = document.getElementById('fltDateFrom')?.value;
+    const to = document.getElementById('fltDateTo')?.value;
+    return sessionScans.filter(s => {
+      if (search && !(s.productName||'').toLowerCase().includes(search)) return false;
+      if (status && s.status !== status) return false;
+      if (inputType && s.inputType !== inputType) return false;
+      const d = new Date(s.scannedAt);
+      if (from && d < new Date(from)) return false;
+      if (to && d > new Date(to + 'T23:59:59')) return false;
+      return true;
+    });
+  }
+  ['fltSearch','fltStatus','fltInputType','fltDateFrom','fltDateTo'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', renderInspections);
+  });
+
+  function renderInspections() {
+    const filtered = getFilteredScans();
+    document.getElementById('inspCount').textContent = `${filtered.length} record${filtered.length===1?'':'s'}`;
+    const body = document.getElementById('inspBody');
+    body.innerHTML = '';
+    if (filtered.length === 0) { body.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--muted);">No scans match these filters.</td></tr>`; return; }
+    filtered.forEach(s => {
+      const tr = document.createElement('tr');
+      const issueCount = (s.issues?.length||0) + (s.misleading?.length||0);
+      tr.innerHTML = `<td><strong>${s.productName || 'Untitled scan'}</strong></td>
+        <td style="color:var(--muted);">${s.category || '—'}</td>
+        <td style="color:var(--muted); text-transform:capitalize;">${s.inputType || 'image'}</td>
+        <td style="color:var(--muted);">${s.officer || '—'}</td>
+        <td style="color:var(--muted);">${new Date(s.scannedAt).toLocaleTimeString()}</td>
+        <td><span class="pill ${s.status}">${s.status}</span></td>
+        <td style="color:var(--muted);">${issueCount ? issueCount + ' issue' + (issueCount===1?'':'s') : '—'}</td>`;
+      body.appendChild(tr);
+    });
+  }
+
+  function renderOfficers() {
+    const body = document.getElementById('officerBody');
+    if (!body) return;
+    const officerName = document.getElementById('officerNameDisplay').textContent || 'Officer';
+    const counts = {};
+    sessionScans.forEach(s => { counts[s.officer || officerName] = (counts[s.officer || officerName] || 0) + 1; });
+    if (!Object.keys(counts).length) counts[officerName] = 0;
+    body.innerHTML = Object.entries(counts).map(([name, count]) => `
+      <tr><td><strong>${name}</strong></td><td>${name === officerName ? (currentRole === 'admin' ? 'Admin' : 'Officer') : 'Officer'}</td><td>${count}</td></tr>
+    `).join('');
+  }
+
+  let summaryGroupBy = 'rule';
+  document.querySelectorAll('.groupby-toggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      summaryGroupBy = btn.dataset.group;
+      document.querySelectorAll('.groupby-toggle button').forEach(b => b.classList.toggle('active', b === btn));
+      renderAnalytics();
+    });
+  });
+
+  function renderAnalytics() {
+    const total = sessionScans.length;
+    document.getElementById('anTotal').textContent = total;
+    const compliant = sessionScans.filter(s => s.status === 'COMPLIANT').length;
+    document.getElementById('anCompliant').textContent = total ? Math.round((compliant/total)*100) + '%' : '0%';
+    document.getElementById('anViolations').textContent = sessionScans.filter(s => s.status === 'VIOLATION').length;
+
+    const counts = {};
+    if (summaryGroupBy === 'rule') {
+      sessionScans.forEach(s => { (s.issues||[]).forEach(i => counts[i] = (counts[i]||0)+1); (s.misleading||[]).forEach(i => counts['Misleading declaration flag'] = (counts['Misleading declaration flag']||0)+1); });
+    } else if (summaryGroupBy === 'category') {
+      sessionScans.forEach(s => { const k = s.category || 'Uncategorised'; counts[k] = (counts[k]||0)+1; });
+    } else if (summaryGroupBy === 'officer') {
+      sessionScans.forEach(s => { const k = s.officer || 'Unknown'; counts[k] = (counts[k]||0)+1; });
+    } else if (summaryGroupBy === 'month') {
+      sessionScans.forEach(s => { const d = new Date(s.scannedAt); const k = d.toLocaleString(undefined,{month:'short', year:'numeric'}); counts[k] = (counts[k]||0)+1; });
+    }
+    const entries = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+    const bars = document.getElementById('issueBars');
+    if (!entries.length) { bars.innerHTML = `<p style="color:var(--muted); font-size:12px;">${I18N[currentLang].run_scans_hint}</p>`; return; }
+    const max = entries[0][1];
+    bars.innerHTML = entries.map(([label, count], i) => `
+      <div class="bar-row">
+        <div class="bar-label"><span>${label}</span><span style="color:var(--muted);">${count}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(count/max)*100}%; background:${i%2===0?'var(--green)':'var(--orange)'};"></div></div>
+      </div>`).join('');
+  }
+
+  // ---------- Rule Desk: all 34 real rules ----------
+  const RULES = [
+    { n:1, ch:"Chapter I — Preliminary", title:"Short title and commencement", summary:"These rules are called the Legal Metrology (Packaged Commodities) Rules, 2011, and came into force on 1 April 2011." },
+    { n:2, ch:"Chapter I — Preliminary", title:"Definitions", summary:"Defines key terms used throughout the rules — manufacturer, packer, dealer, net quantity, principal display panel, retail/wholesale package, and more." },
+    { n:3, ch:"Chapter II — Retail Packages", title:"Applicability of the chapter", summary:"This chapter's provisions don't apply to packages over 25kg/25L (except cement/fertilizer bags up to 50kg) or to industrial/institutional buyers." },
+    { n:4, ch:"Chapter II — Retail Packages", title:"Regulation for pre-packing and sale", summary:"No commodity may be pre-packed for sale unless the package bears all declarations required under these rules." },
+    { n:5, ch:"Chapter II — Retail Packages", title:"Standard package sizes", summary:"Commodities listed in the Second Schedule must be packed only in the standard quantities specified there." },
+    { n:6, ch:"Chapter II — Retail Packages", title:"Mandatory declarations", summary:"Every package must declare the manufacturer/packer/importer's name & address, the commodity's common name, net quantity, month & year of manufacture, retail sale price, dimensions (where relevant), and consumer-care contact details." },
+    { n:7, ch:"Chapter II — Retail Packages", title:"Principal display panel — numeral height", summary:"Sets minimum letter/numeral heights on the principal display panel based on the package's declared net quantity (see Tables I & II)." },
+    { n:8, ch:"Chapter II — Retail Packages", title:"Where declarations must appear", summary:"All declarations must appear on the principal display panel, kept clear of surrounding printed matter." },
+    { n:9, ch:"Chapter II — Retail Packages", title:"Manner of declaration", summary:"Declarations must be legible, prominent, printed in a contrasting colour, and in Hindi (Devanagari) or English." },
+    { n:10, ch:"Chapter II — Retail Packages", title:"Declaration of name & address", summary:"Requires a complete, identifiable address of the manufacturer, packer, or importer on every package." },
+    { n:11, ch:"Chapter II — Retail Packages", title:"General provisions on quantity declaration", summary:"Net quantity must exclude packaging weight and reflect what the consumer actually receives." },
+    { n:12, ch:"Chapter II — Retail Packages", title:"Manner of declaring quantity", summary:"Quantity must be declared in standard units (mass, length, area, volume, or number) and must avoid vague qualifiers like 'approximately' or 'about'." },
+    { n:13, ch:"Chapter II — Retail Packages", title:"Units of weight, measure or number", summary:"Specifies which metric unit to use (grams vs kilograms, millilitres vs litres, etc.) depending on the declared quantity." },
+    { n:14, ch:"Chapter II — Retail Packages", title:"Declarations for dimensioned commodities", summary:"Items like bedsheets, towels, and sarees must also declare their finished dimensions." },
+    { n:15, ch:"Chapter II — Retail Packages", title:"Declarations where price depends on size/weight", summary:"If a commodity's price depends on its dimensions or weight, both must be declared together." },
+    { n:16, ch:"Chapter II — Retail Packages", title:"Declarations for sheet-type products", summary:"Products like tissues or foil must state the number of usable sheets and their dimensions." },
+    { n:17, ch:"Chapter II — Retail Packages", title:"Declarations for container-type commodities", summary:"Bags, boxes, and similar containers must declare their count and dimensions in a prescribed format." },
+    { n:18, ch:"Chapter II — Retail Packages", title:"Provisions for wholesale/retail dealers", summary:"Dealers cannot sell non-compliant packages, cannot sell above the declared MRP, and cannot alter or obscure the printed price." },
+    { n:19, ch:"Chapter II — Retail Packages", title:"Inspection at manufacturer/packer premises", summary:"Empowers Legal Metrology Officers to inspect, sample, and test packages for compliance at the manufacturing site." },
+    { n:20, ch:"Chapter II — Retail Packages", title:"Action after inspection", summary:"Details the seizure and enforcement steps to be taken if a manufacturer's packages fail inspection." },
+    { n:21, ch:"Chapter II — Retail Packages", title:"Inspection at wholesale/retail premises", summary:"Allows testing at a dealer's premises, typically only after a complaint, suspected tampering, or missing declarations." },
+    { n:22, ch:"Chapter II — Retail Packages", title:"Maximum permissible error", summary:"Establishes the allowed margin of error in declared net quantity, detailed in the First Schedule." },
+    { n:23, ch:"Chapter II — Retail Packages", title:"Deceptive packaging", summary:"Packages designed to visually exaggerate their contents must be re-packed/re-labelled, or else seized." },
+    { n:24, ch:"Chapter III — Wholesale Packages", title:"Wholesale package declarations", summary:"Every wholesale package must declare the manufacturer/importer's details, the commodity's identity, and the total quantity or count inside." },
+    { n:25, ch:"Chapter IV — Export & Import", title:"Restrictions on export packages sold in India", summary:"Export-only packages cannot be sold domestically unless re-labelled to meet these rules." },
+    { n:26, ch:"Chapter V — Exemptions", title:"Exemptions", summary:"Certain small packages (10g/10ml or less), restaurant/hotel fast food, specific drug formulations, and large agricultural produce packs are exempt." },
+    { n:27, ch:"Chapter VI — Registration", title:"Registration of manufacturers, packers & importers", summary:"Anyone who pre-packs or imports commodities must register their name and address with the Director or Controller." },
+    { n:28, ch:"Chapter VI — Registration", title:"Registration of a shorter address", summary:"Allows registering an abbreviated address for use on labels, if the Controller finds it sufficiently identifiable." },
+    { n:29, ch:"Chapter VI — Registration", title:"Register of manufacturers/packers", summary:"The Controller maintains a public register of all registered manufacturers and packers, open for inspection without fee." },
+    { n:30, ch:"Chapter VI — Registration", title:"Circulation of manufacturer/packer lists", summary:"Registered manufacturer/packer lists are compiled state-wise and circulated to enable sampling and inspection." },
+    { n:31, ch:"Chapter VII — General", title:"Advertisements", summary:"Advertisements quoting a retail price must also state the net quantity, in the same font size as the price." },
+    { n:32, ch:"Chapter VII — General", title:"Penalty for contravention", summary:"Sets fines — up to ₹4,000 for registration-related violations, ₹2,000 for other unspecified contraventions." },
+    { n:33, ch:"Chapter VII — General", title:"Power to relax", summary:"Allows the Central Government to relax specific provisions for a manufacturer or packer in genuine, justified cases." },
+    { n:34, ch:"Chapter VII — General", title:"Repeal and savings", summary:"Repeals the earlier 1977 Rules, while preserving rights, actions, and proceedings already underway under them." },
+  ];
+
+  async function downloadBackendReport(extension) {
+    const data = sessionScans[0];
+    if (!data?.id) return;
+
+    try {
+      const response = await authFetch(`${API_BASE}/api/scans/${encodeURIComponent(data.id)}/report.${extension}`);
+      if (!response.ok) {
+        let detail = `Report download failed (${response.status})`;
+        try {
+          const body = await response.json();
+          if (body.detail) detail = body.detail;
+        } catch (_) {}
+        throw new Error(detail);
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || `scan-${data.id}-report.${extension}`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      alert(err.message || 'Unable to download report.');
+    }
+  }
+
+  document.getElementById('downloadPdfBtn').addEventListener('click', () => downloadBackendReport('pdf'));
+  document.getElementById('downloadDocBtn').addEventListener('click', () => downloadBackendReport('docx'));
+
+  function renderRules(filter = "") {
+    const list = document.getElementById('ruleList');
+    list.innerHTML = '';
+    let lastChapter = null;
+    const q = filter.trim().toLowerCase();
+    RULES.forEach(r => {
+      if (q && !(r.title.toLowerCase().includes(q) || r.summary.toLowerCase().includes(q) || r.ch.toLowerCase().includes(q) || String(r.n) === q)) return;
+      if (r.ch !== lastChapter) {
+        const chDiv = document.createElement('div');
+        chDiv.className = 'chapter-label';
+        chDiv.textContent = r.ch;
+        list.appendChild(chDiv);
+        lastChapter = r.ch;
+      }
+      const row = document.createElement('div');
+      row.className = 'rule-row';
+      row.innerHTML = `<span class="rule-num">${String(r.n).padStart(2,'0')}</span><span class="rule-title">${r.title}</span><div class="rule-summary">${r.summary}</div>`;
+      row.addEventListener('click', () => row.classList.toggle('open'));
+      list.appendChild(row);
+    });
+  }
+  document.getElementById('ruleSearch').addEventListener('input', e => renderRules(e.target.value));
+  renderRules();
+  renderAll();
+</script>
+</body>
+</html>

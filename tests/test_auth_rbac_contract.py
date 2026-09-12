@@ -29,4 +29,4 @@ def test_cors_is_restricted_and_scan_routes_require_officer():
     ast.parse(source)
     assert "allow_origins=settings.allowed_cors_origins" in source
     assert 'allow_origins=["*"]' not in source
-    assert source.count("Depends(current_active_officer)") == 4
+    assert source.count("Depends(current_active_officer)") == 5

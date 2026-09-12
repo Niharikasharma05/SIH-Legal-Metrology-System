@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -249,6 +250,44 @@ def get_scan(
             ],
         }
 
+    finally:
+        session.close()
+
+
+@app.get("/api/scans/{scan_id}/images/{image_id}")
+def get_scan_image(
+    scan_id: uuid.UUID,
+    image_id: uuid.UUID,
+    user: User = Depends(current_active_officer),
+):
+    session = SessionLocal()
+
+    try:
+        image = session.execute(
+            select(ScanImage)
+            .where(
+                ScanImage.id == image_id,
+                ScanImage.scan_id == scan_id,
+            )
+        ).scalar_one_or_none()
+
+        if image is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Scan image not found",
+            )
+
+        content = download_image(image.object_key)
+        media_type = (
+            mimetypes.guess_type(image.object_key)[0]
+            or "application/octet-stream"
+        )
+
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Cache-Control": "private, max-age=300"},
+        )
     finally:
         session.close()
 
