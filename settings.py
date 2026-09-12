@@ -11,7 +11,14 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str
     jwt_secret: str = "change-this-development-secret-before-production"
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = (
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173,"
+        "http://localhost:8080,"
+        "http://127.0.0.1:8080,"
+        "http://localhost:8081,"
+        "http://127.0.0.1:8081"
+    )
     minio_endpoint: str
     minio_access_key: str
     minio_secret_key: str
