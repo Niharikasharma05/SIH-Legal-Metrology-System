@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0003_misleading_declaration_fields"
+revision = "0003_misleading_fields"
 down_revision = "09a7b14a5415"
 branch_labels = None
 depends_on = None
