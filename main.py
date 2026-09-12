@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from sqlalchemy import func, select
 
 from auth import (
@@ -17,11 +18,33 @@ from auth import (
 )
 from db import SessionLocal
 from models import Scan, ScanImage, User
+from report_docx import generate_docx_report
+from report_pdf import generate_pdf_report
 from settings import settings
-from storage import ensure_bucket, image_object_key, upload_image
+from storage import (
+    download_image,
+    ensure_bucket,
+    image_object_key,
+    report_exists,
+    report_object_key,
+    upload_image,
+)
 
 
 ALLOWED_LABELS = {"front", "back", "side", "other"}
+
+# A report only makes sense once processing has produced a verdict — a scan
+# still pending/processing/failed has no compliance data to put in one.
+TERMINAL_SCAN_STATUSES = {"COMPLIANT", "WARNING", "VIOLATION"}
+
+REPORT_CONTENT_TYPES = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+REPORT_GENERATORS = {
+    "pdf": generate_pdf_report,
+    "docx": generate_docx_report,
+}
 
 
 @asynccontextmanager
@@ -294,7 +317,93 @@ def get_scan_history(
         session.close()
 
 
-if __name__ == "__main__":
+def _fetch_scan_or_404(session, scan_id: uuid.UUID) -> Scan:
+    scan = session.execute(
+        select(Scan).where(Scan.id == scan_id)
+    ).scalar_one_or_none()
+
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    return scan
+
+
+def _get_or_generate_report(scan: Scan, extension: str) -> bytes:
+    """Generate-on-demand, cached in MinIO: the first download for a scan
+    generates and stores the report; every later download for the same
+    scan just re-serves the stored bytes, since the object key is
+    deterministic per (scan, extension) — see storage.report_object_key.
+    """
+    object_key = report_object_key(scan.id, extension)
+
+    if report_exists(object_key):
+        return download_image(object_key)
+
+    body = REPORT_GENERATORS[extension](scan)
+    upload_image(object_key, body, REPORT_CONTENT_TYPES[extension])
+
+    return body
+
+
+def _require_terminal_status(scan: Scan) -> None:
+    if scan.status not in TERMINAL_SCAN_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Scan is '{scan.status}' — a report isn't available "
+                "until processing finishes"
+            ),
+        )
+
+
+@app.get("/api/scans/{scan_id}/report.pdf")
+def get_scan_report_pdf(
+    scan_id: uuid.UUID,
+    user: User = Depends(current_active_officer),
+):
+    session = SessionLocal()
+
+    try:
+        scan = _fetch_scan_or_404(session, scan_id)
+        _require_terminal_status(scan)
+
+        body = _get_or_generate_report(scan, "pdf")
+
+        return Response(
+            content=body,
+            media_type=REPORT_CONTENT_TYPES["pdf"],
+            headers={
+                "Content-Disposition": f'attachment; filename="scan-{scan.id}-report.pdf"'
+            },
+        )
+
+    finally:
+        session.close()
+
+
+@app.get("/api/scans/{scan_id}/report.docx")
+def get_scan_report_docx(
+    scan_id: uuid.UUID,
+    user: User = Depends(current_active_officer),
+):
+    session = SessionLocal()
+
+    try:
+        scan = _fetch_scan_or_404(session, scan_id)
+        _require_terminal_status(scan)
+
+        body = _get_or_generate_report(scan, "docx")
+
+        return Response(
+            content=body,
+            media_type=REPORT_CONTENT_TYPES["docx"],
+            headers={
+                "Content-Disposition": f'attachment; filename="scan-{scan.id}-report.docx"'
+            },
+        )
+
+    finally:
+        session.close()
     import uvicorn
 
     uvicorn.run(

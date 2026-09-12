@@ -40,6 +40,30 @@ def image_object_key(scan_id: UUID, image_id: UUID, extension: str = "jpg") -> s
     return f"scans/{scan_id}/images/{image_id}.{extension}"
 
 
+def report_object_key(scan_id: UUID, extension: str) -> str:
+    """Deterministic report key — derived from scan_id alone, no separate
+    DB column needed to look it up later. A scan's compliance verdict is
+    only meant to be computed once it reaches a terminal status; if a
+    report is regenerated for the same scan, overwriting the previous
+    object at this same key is the correct behavior (the old report would
+    just be a stale copy of the same verdict, not a different version
+    worth keeping side by side). Revisit this if the system ever needs
+    to keep multiple report versions per scan.
+    """
+    extension = extension.lower().lstrip(".")
+    return f"scans/{scan_id}/reports/report.{extension}"
+
+
+def report_exists(object_key: str) -> bool:
+    try:
+        _client().head_object(Bucket=settings.minio_bucket, Key=object_key)
+        return True
+    except ClientError as error:
+        if error.response["Error"]["Code"] in {"404", "NoSuchKey"}:
+            return False
+        raise
+
+
 def upload_image(object_key: str, body: bytes, content_type: str = "image/jpeg") -> None:
     _client().put_object(Bucket=settings.minio_bucket, Key=object_key, Body=body, ContentType=content_type)
 
