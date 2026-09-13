@@ -3,8 +3,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+from compliance_checks import build_missing_issues
 from worker import (
-    build_missing_issues,
     merge_declarations,
     recover_stale_processing,
 )

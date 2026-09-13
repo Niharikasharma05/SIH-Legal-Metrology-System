@@ -26,9 +26,20 @@ def _reconstruct_reading_order(raw_lines, row_tolerance=15):
 DATE_VALUE = r"\d{1,2}[-/]\s?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-/]\s?\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}[/-]\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{2,4}"
 
 
-def parse_legal_metrology_declarations(raw_lines):
-    full_text = _reconstruct_reading_order(raw_lines)
+def parse_declarations_from_text(full_text: str) -> dict:
+    """The reusable half of the parser: everything that only needs plain
+    text, no bounding boxes. This is what Phase 6 (listing/text input mode)
+    calls directly on a pasted product listing, skipping bbox
+    reconstruction, font-height measurement, and placement entirely — none
+    of that applies to text with no photo behind it.
 
+    Returns declarations, required_mm, and the Rule 6-family
+    declaration-completeness issues (missing MRP/qty/date/address/care).
+    Does NOT include the readability (font) issue — that depends on
+    bounding-box heights from an actual photo and is added on top by
+    parse_legal_metrology_declarations() below, which is the only caller
+    that has raw_lines to measure.
+    """
     mrp_pattern = r"(?:MRP|M\.R\.P\.|Max(?:imum)?\s*Retail\s*Price)[^\d]{0,35}?(\d+(?:\.\d{1,2})?)"
     net_wt_pattern = r"(?:Net\s*Wt|Net\s*Qty|Net\s*Quantity|Net\s*Weight|Net\s*Volume|Net\s*Content|NET\s*WT\.?|Contents)[^\d]{0,15}?(\d+(?:\.\d+)?)\s*(g|grm|gram|grams|kg|ml|l|liter|litres|N|U|units|sticks?|pcs|pieces?|tablets?|capsules?)"
     # Restricted to labels that explicitly say "per <unit>" / "/<unit>" — a bare
@@ -68,15 +79,6 @@ def parse_legal_metrology_declarations(raw_lines):
         except (ValueError, IndexError):
             required_mm = None
 
-    heights = []
-    for item in raw_lines:
-        bbox = item.get("bbox", [])
-        if len(bbox) == 4:
-            ys = [pt[1] for pt in bbox]
-            heights.append(max(ys) - min(ys))
-    median_height_px = sorted(heights)[len(heights) // 2] if heights else 0
-    font_ok = median_height_px >= 14
-
     declarations = {
         "mrp": mrp_match.group(0) if mrp_match else None,
         "net_quantity": net_wt_match.group(0) if net_wt_match else None,
@@ -114,11 +116,44 @@ def parse_legal_metrology_declarations(raw_lines):
         issues.append("Rule 6(1)(a): Manufacturer/packer address not clearly detected")
     if not declarations["consumer_care"]:
         issues.append("Rule 6(2): Consumer care contact details not detected")
+
+    return {
+        "declarations": declarations,
+        "required_mm": required_mm,
+        "issues": issues,
+        "raw_text": full_text,
+    }
+
+
+def parse_legal_metrology_declarations(raw_lines):
+    """Image-specific wrapper: reconstructs reading order from OCR bboxes,
+    delegates all text-based extraction to parse_declarations_from_text(),
+    then adds the font-height readability check on top — the one thing
+    that genuinely needs bounding boxes rather than plain text.
+    """
+    full_text = _reconstruct_reading_order(raw_lines)
+    text_result = parse_declarations_from_text(full_text)
+
+    heights = []
+    for item in raw_lines:
+        bbox = item.get("bbox", [])
+        if len(bbox) == 4:
+            ys = [pt[1] for pt in bbox]
+            heights.append(max(ys) - min(ys))
+    median_height_px = sorted(heights)[len(heights) // 2] if heights else 0
+    font_ok = median_height_px >= 14
+
+    issues = list(text_result["issues"])
     if not font_ok:
+        required_mm = text_result["required_mm"]
         mm_note = f" (Rule 7 would require {required_mm}mm for this quantity, but this check does not measure physical mm)" if required_mm else ""
         issues.append(f"Readability heuristic: detected text is smaller than a general legibility threshold — a relative pixel-based estimate, not a measured Rule 7 numeral-height verdict{mm_note}")
 
     return {
-        "declarations": declarations, "font_ok": font_ok, "required_mm": required_mm,
-        "median_text_height_px": median_height_px, "issues": issues, "raw_text": full_text,
+        "declarations": text_result["declarations"],
+        "font_ok": font_ok,
+        "required_mm": text_result["required_mm"],
+        "median_text_height_px": median_height_px,
+        "issues": issues,
+        "raw_text": full_text,
     }

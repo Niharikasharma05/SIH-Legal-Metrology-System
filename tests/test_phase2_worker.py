@@ -2,9 +2,9 @@ import unittest
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+from compliance_checks import build_missing_issues
 from worker import (
     PROCESSING_TIMEOUT,
-    build_missing_issues,
     merge_declarations,
     recover_stale_processing,
 )

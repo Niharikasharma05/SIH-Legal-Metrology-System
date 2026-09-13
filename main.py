@@ -17,11 +17,13 @@ from auth import (
     current_active_officer,
     fastapi_users,
 )
+from compliance_checks import apply_compliance_verdict, check_misleading_declarations
 from db import SessionLocal
 from models import Scan, ScanImage, User
 from report_docx import generate_docx_report
 from report_pdf import generate_pdf_report
 from settings import settings
+from step3_parser import parse_declarations_from_text
 from storage import (
     download_image,
     ensure_bucket,
@@ -96,10 +98,38 @@ async def health():
 
 @app.post("/api/scans", status_code=202)
 async def create_scan(
-    files: List[UploadFile] = File(...),
+    files: Optional[List[UploadFile]] = File(None),
     labels: Optional[List[str]] = Form(None),
     product_name: Optional[str] = Form(None),
+    listing_text: Optional[str] = Form(None),
     user: User = Depends(current_active_officer),
+):
+    has_files = bool(files)
+    has_listing_text = bool(listing_text and listing_text.strip())
+
+    if has_files and has_listing_text:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide either image files or listing_text, not both",
+        )
+
+    if not has_files and not has_listing_text:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide either image files or listing_text",
+        )
+
+    if has_listing_text:
+        return await _create_listing_scan(listing_text, product_name, user)
+
+    return await _create_image_scan(files, labels, product_name, user)
+
+
+async def _create_image_scan(
+    files: List[UploadFile],
+    labels: Optional[List[str]],
+    product_name: Optional[str],
+    user: User,
 ):
     if len(files) > 4:
         raise HTTPException(
@@ -179,6 +209,65 @@ async def create_scan(
             "id": str(scan.id),
             "status": "pending",
             "image_count": len(files),
+        }
+
+    except HTTPException:
+        session.rollback()
+        raise
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+async def _create_listing_scan(
+    listing_text: str,
+    product_name: Optional[str],
+    user: User,
+):
+    session = SessionLocal()
+
+    try:
+        text_result = parse_declarations_from_text(listing_text)
+        declarations = text_result["declarations"]
+
+        scan = Scan(
+            input_type="listing",
+            status="pending",
+            product_name=product_name,
+            raw_text=listing_text,
+            scanned_by_id=user.id,
+            mrp=declarations["mrp"],
+            net_quantity=declarations["net_quantity"],
+            unit_price=declarations["unit_price"],
+            discount_claim=declarations["discount_claim"],
+            free_qty_claim=declarations["free_qty_claim"],
+            date_of_mfg=declarations["date_of_mfg"],
+            manufacturer_address=declarations["manufacturer_address"],
+            consumer_care=declarations["consumer_care"],
+            # No photo exists for a listing scan, so there's nothing for
+            # these two checks to run against — same "not applicable"
+            # treatment as reporting.py gives a None here, not a failure.
+            font_ok=None,
+            placement_ok=None,
+            required_mm=text_result["required_mm"],
+        )
+
+        # Cross-image conflicts don't apply here — a listing scan has
+        # exactly one text source, never multiple images to disagree with
+        # each other, so only the single-source misleading-declaration
+        # check runs (the same one Phase 4.1b uses for image scans).
+        severity_issues = check_misleading_declarations(declarations)
+        apply_compliance_verdict(scan, declarations, severity_issues)
+
+        session.add(scan)
+        session.commit()
+
+        return {
+            "id": str(scan.id),
+            "status": scan.status,
+            "image_count": 0,
         }
 
     except HTTPException:
