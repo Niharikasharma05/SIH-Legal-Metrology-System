@@ -806,7 +806,7 @@
       issues,
       misleading: [],
       images,
-      rawListingText: null,
+      rawListingText: data.raw_text || null,
     };
   }
 
@@ -815,26 +815,35 @@
     statusEl.className = '';
     statusEl.textContent = '';
 
-    if (scanMode === 'listing') {
-      statusEl.className = 'error';
-      statusEl.textContent = 'Listing-text scans are not supported by the current Phase 5 API. Use Photo scan.';
-      scanBtn.disabled = false;
-      return;
-    }
-
     try {
-      const stepKeys = ['step_upload','step_ocr','step_parse','step_merge','step_report'];
+      const isListing = scanMode === 'listing';
+      const stepKeys = isListing
+        ? ['step_parse', 'step_report']
+        : ['step_upload','step_ocr','step_parse','step_merge','step_report'];
+
       runProcSteps(stepKeys, () => {});
 
       const formData = new FormData();
-      imageSlots.forEach(s => {
-        formData.append('files', s.file);
-        formData.append('labels', s.label);
-      });
-
       const productName = document.getElementById('productNameInput').value.trim();
       const category = document.getElementById('categoryInput').value;
-      if (productName) formData.append('product_name', productName);
+
+      if (isListing) {
+        const listingText = document.getElementById('listingTextInput').value.trim();
+
+        if (!listingText) {
+          throw new Error('Enter listing text before scanning.');
+        }
+
+        formData.append('listing_text', listingText);
+        if (productName) formData.append('product_name', productName);
+      } else {
+        imageSlots.forEach(s => {
+          formData.append('files', s.file);
+          formData.append('labels', s.label);
+        });
+
+        if (productName) formData.append('product_name', productName);
+      }
 
       const res = await authFetch(API_URL, { method: 'POST', body: formData });
       if (!res.ok) {
