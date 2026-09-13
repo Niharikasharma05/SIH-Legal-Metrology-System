@@ -1,0 +1,8 @@
+setucheck.nindark.codes {
+    root * /srv/frontend
+    file_server
+
+    reverse_proxy /api/* api:8000
+    reverse_proxy /auth/* api:8000
+    reverse_proxy /users/* api:8000
+}
