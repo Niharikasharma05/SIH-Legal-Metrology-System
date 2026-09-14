@@ -2,14 +2,15 @@ fastapi==0.115.12
 uvicorn[standard]==0.34.2
 python-multipart==0.0.20
 opencv-python-headless==4.11.0.86
-easyocr==1.7.2
 numpy==2.2.5
+paddlepaddle==3.2.2
+paddleocr==3.7.0
 scikit-learn==1.5.2
 weasyprint==70.0
 python-docx==1.2.0
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.7.0+cpu
-torchvision==0.22.0+cpu
+torchvision==0.22.0
 SQLAlchemy==2.0.40
 alembic==1.15.2
 psycopg[binary]==3.2.7
